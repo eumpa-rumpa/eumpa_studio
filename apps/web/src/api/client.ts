@@ -1,4 +1,4 @@
-import type { HealthResponse, Project } from "./types";
+import type { HealthResponse, Job, Project, Shot } from "./types";
 
 const BASE_URL = "/api";
 
@@ -20,6 +20,15 @@ export async function fetchProjects(): Promise<Project[]> {
 
 export async function fetchProject(id: string): Promise<Project> {
   return get<Project>(`/projects/${id}`);
+}
+
+export async function fetchJobs(): Promise<Job[]> {
+  return get<Job[]>("/jobs");
+}
+
+export async function fetchShots(projectId: string): Promise<Shot[]> {
+  const params = new URLSearchParams({ project_id: projectId });
+  return get<Shot[]>(`/shots?${params.toString()}`);
 }
 
 export async function createProject(formData: FormData): Promise<Project> {
