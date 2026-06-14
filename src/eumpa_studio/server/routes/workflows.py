@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from eumpa_studio.db.session import get_session
 from eumpa_studio.domain.models import ExecutionMode, WorkflowTemplate
-from eumpa_studio.execution.workflow_patch import apply_mode
+from eumpa_studio.execution.workflow_patch import ValidationError, apply_mode
 
 router = APIRouter()
 
@@ -62,7 +62,6 @@ class ExecutionModeRead(BaseModel):
 
 
 class ExecutionModeCreate(BaseModel):
-    workflow_template_id: str
     name: str
     required_inputs: Optional[str] = None
     optional_inputs: Optional[str] = None
@@ -199,7 +198,7 @@ def patch_workflow_endpoint(body: PatchRequest, db: DbSession) -> PatchResponse:
             mode_node_bindings=node_bindings,
             inputs=body.inputs,
         )
-    except Exception as exc:
+    except ValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return PatchResponse(patched_workflow=patched)
