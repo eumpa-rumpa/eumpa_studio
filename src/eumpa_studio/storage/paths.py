@@ -29,8 +29,9 @@ def save_upload(upload: UploadFile, dest_dir: Path, data_root: Path) -> tuple[st
     The relative_path is relative to data_root, e.g.
     ``"projects/{project_id}/inputs/audio.mp3"``.
     """
-    filename = upload.filename or "upload"
-    dest_path = dest_dir / filename
+    raw_name = upload.filename or "upload"
+    safe_name = Path(raw_name).name  # strips any directory components
+    dest_path = dest_dir / safe_name
     with dest_path.open("wb") as out:
         shutil.copyfileobj(upload.file, out)
     relative_path = str(dest_path.relative_to(data_root))
