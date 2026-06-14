@@ -21,9 +21,9 @@ class Project(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String, nullable=False)
 
-    # Audio file reference
-    audio_storage_backend: Mapped[str] = mapped_column(String, nullable=False)
-    audio_relative_path: Mapped[str] = mapped_column(String, nullable=False)
+    # Audio file reference (optional)
+    audio_storage_backend: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    audio_relative_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # Lyrics (optional)
     lyrics_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
