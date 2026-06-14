@@ -3,8 +3,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from eumpa_studio.config import get_settings
 from eumpa_studio.server.routes.health import router as health_router
+from eumpa_studio.server.routes.jobs import router as jobs_router
 
 app = FastAPI(title="eumpa_studio", version="0.1.0")
 
@@ -16,6 +16,5 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.state.settings = get_settings()
-
 app.include_router(health_router, prefix="/api")
+app.include_router(jobs_router)

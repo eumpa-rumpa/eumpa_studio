@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { fetchHealth } from "../api/client";
 import type { HealthResponse } from "../api/types";
 
 interface UseHealthResult {
@@ -15,13 +16,7 @@ export function useHealth(): UseHealthResult {
   useEffect(() => {
     let cancelled = false;
 
-    fetch("/api/health")
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-        }
-        return res.json() as Promise<HealthResponse>;
-      })
+    fetchHealth()
       .then((json) => {
         if (!cancelled) {
           setData(json);

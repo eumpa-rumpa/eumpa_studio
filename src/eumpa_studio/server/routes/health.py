@@ -45,12 +45,14 @@ def _check_codex_cli(codex_cli_path: str) -> str:
         return "not_found"
     except FileNotFoundError:
         return "not_found"
+    except subprocess.TimeoutExpired:
+        return "timeout"
     except Exception:
         return "not_found"
 
 
 @router.get("/health")
-async def health(
+def health(
     settings: Settings = Depends(get_settings_dep),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
