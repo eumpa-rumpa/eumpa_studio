@@ -143,7 +143,6 @@ def create_draft_shots(
         shots.append(shot)
 
     session.flush()
-    session.commit()
     return shots
 
 
@@ -166,8 +165,7 @@ def run_alignment_job(
         raise ValueError(f"Project {project_id!r} not found")
 
     if not project.audio_relative_path:
-        # No audio attached — nothing to align.
-        return
+        raise ValueError(f"Project {project_id!r} has no audio attached")
 
     audio_path = str(settings.data_root / project.audio_relative_path)
     results = run_alignment(audio_path, settings.alignment_command)
