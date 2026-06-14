@@ -22,3 +22,29 @@ export interface Project {
   created_at: string;
   updated_at: string;
 }
+
+/** A background job returned from the API */
+export interface Job {
+  id: string;
+  type: string;
+  target_entity_type: string | null;
+  target_entity_id: string | null;
+  status: string;
+  logs: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+/** A generation/render attempt returned from the API */
+export interface Attempt {
+  id: string;
+  shot_id: string;
+  status: string;
+  prompt_ko: string | null;
+  prompt_en: string | null;
+  review_note: string | null;
+  created_at: string;
+}
