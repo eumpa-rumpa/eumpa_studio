@@ -1,5 +1,10 @@
 import { AppShell } from "./components/AppShell";
+import { QueuePanel } from "./components/QueuePanel";
 
 export function App() {
-  return <AppShell />;
+  return (
+    <AppShell>
+      <QueuePanel />
+    </AppShell>
+  );
 }
