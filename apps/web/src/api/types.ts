@@ -1,4 +1,7 @@
 /** Response from GET /api/health */
 export interface HealthResponse {
-  status: string;
+  backend: string;
+  database: string;
+  comfyui: string;
+  codex_cli: string;
 }

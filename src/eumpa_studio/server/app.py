@@ -3,6 +3,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from eumpa_studio.config import get_settings
+from eumpa_studio.server.routes.health import router as health_router
+
 app = FastAPI(title="eumpa_studio", version="0.1.0")
 
 app.add_middleware(
@@ -13,8 +16,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.state.settings = get_settings()
 
-@app.get("/api/health")
-async def health() -> dict[str, str]:
-    """Health check endpoint."""
-    return {"status": "ok"}
+app.include_router(health_router, prefix="/api")

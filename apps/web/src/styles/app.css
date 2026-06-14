@@ -62,3 +62,40 @@ body {
   flex: 1;
   padding: 2rem;
 }
+
+.health-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.health-bar--checking,
+.health-bar--error {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  background-color: #1a1a1a;
+}
+
+.health-bar--checking {
+  color: #aaa;
+}
+
+.health-bar--error {
+  color: #f87171;
+}
+
+.health-bar__badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  background-color: #1a1a1a;
+  color: #aaa;
+}
+
+.health-bar__badge--ok {
+  color: #4ade80;
+}
+
+.health-bar__badge--error {
+  color: #f87171;
+}
