@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from eumpa_studio.db.base import Base
@@ -23,11 +23,21 @@ from eumpa_studio.domain.statuses import AttemptStatus, JobStatus, ShotStatus
 def db_session():
     """Create an in-memory SQLite engine, build all tables, yield a session."""
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_conn, connection_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     Base.metadata.create_all(engine)
     Session_ = sessionmaker(bind=engine)
     session = Session_()
     yield session
     session.close()
+    with engine.connect() as conn:
+        conn.execute(__import__("sqlalchemy").text("PRAGMA foreign_keys=OFF"))
+        conn.commit()
     Base.metadata.drop_all(engine)
 
 
@@ -356,7 +366,13 @@ def test_shot_status_enum_values():
 
 def test_attempt_status_enum_values():
     assert AttemptStatus.NEEDS_INPUT.value == "Needs Input"
+    assert AttemptStatus.READY.value == "Ready"
+    assert AttemptStatus.QUEUED.value == "Queued"
+    assert AttemptStatus.RENDERING.value == "Rendering"
+    assert AttemptStatus.NEEDS_REVIEW.value == "Needs Review"
     assert AttemptStatus.SELECTED.value == "Selected"
+    assert AttemptStatus.REDO.value == "Redo"
+    assert AttemptStatus.REJECTED.value == "Rejected"
     assert AttemptStatus.FAILED.value == "Failed"
 
 
@@ -444,3 +460,42 @@ def test_workflow_template_execution_modes_relationship(db_session: Session):
     db_session.refresh(template)
 
     assert len(template.execution_modes) == 2
+
+
+def test_shot_active_attempt_relationship(db_session: Session):
+    """Setting active_attempt_id to a real Attempt ID is traversable via the relationship."""
+    project = Project(
+        name="Active Attempt Project",
+        audio_storage_backend="local",
+        audio_relative_path="audio/active.wav",
+    )
+    db_session.add(project)
+    db_session.commit()
+
+    shot = Shot(
+        project_id=project.id,
+        order=10,
+        start_time=0.0,
+        end_time=4.0,
+        duration=4.0,
+        status=ShotStatus.NEEDS_INPUT.value,
+    )
+    db_session.add(shot)
+    db_session.commit()
+
+    attempt = Attempt(
+        shot_id=shot.id,
+        status=AttemptStatus.SELECTED.value,
+        prompt_en="Active attempt prompt",
+    )
+    db_session.add(attempt)
+    db_session.commit()
+
+    shot.active_attempt_id = attempt.id
+    db_session.commit()
+    db_session.refresh(shot)
+
+    assert shot.active_attempt_id == attempt.id
+    assert shot.active_attempt is not None
+    assert shot.active_attempt.id == attempt.id
+    assert shot.active_attempt.status == AttemptStatus.SELECTED.value

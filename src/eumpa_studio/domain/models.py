@@ -1,5 +1,6 @@
 """SQLAlchemy ORM models for eumpa_studio MVP entities."""
 
+import datetime
 import uuid
 from typing import Optional
 
@@ -36,8 +37,8 @@ class Project(Base):
 
     default_comfyui_server: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
-    created_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now(), nullable=False)
-    updated_at: Mapped[DateTime] = mapped_column(
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=func.now(), nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now(), nullable=False
     )
 
@@ -68,8 +69,8 @@ class Shot(Base):
         nullable=True,
     )
 
-    created_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now(), nullable=False)
-    updated_at: Mapped[DateTime] = mapped_column(
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=func.now(), nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now(), nullable=False
     )
 
@@ -132,8 +133,8 @@ class Attempt(Base):
         String, nullable=False, default=AttemptStatus.NEEDS_INPUT.value
     )
 
-    created_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now(), nullable=False)
-    updated_at: Mapped[DateTime] = mapped_column(
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=func.now(), nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now(), nullable=False
     )
 
@@ -169,7 +170,7 @@ class Asset(Base):
     relative_path: Mapped[str] = mapped_column(String, nullable=False)
     mime_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
-    created_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now(), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=func.now(), nullable=False)
 
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="assets")
@@ -185,8 +186,8 @@ class WorkflowTemplate(Base):
     version: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     compatibility_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    created_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now(), nullable=False)
-    updated_at: Mapped[DateTime] = mapped_column(
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=func.now(), nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now(), nullable=False
     )
 
@@ -213,8 +214,8 @@ class ExecutionMode(Base):
     validation_rules: Mapped[str] = mapped_column(Text, nullable=False)
     exposed_params: Mapped[str] = mapped_column(Text, nullable=False)
 
-    created_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now(), nullable=False)
-    updated_at: Mapped[DateTime] = mapped_column(
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=func.now(), nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now(), nullable=False
     )
 
@@ -240,9 +241,9 @@ class Job(Base):
     logs: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    created_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now(), nullable=False)
-    updated_at: Mapped[DateTime] = mapped_column(
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=func.now(), nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now(), nullable=False
     )
-    started_at: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
-    finished_at: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
+    started_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)

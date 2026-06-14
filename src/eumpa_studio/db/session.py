@@ -1,6 +1,7 @@
 """Database session factory for eumpa_studio."""
 
 import os
+from typing import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -21,9 +22,13 @@ SessionLocal: sessionmaker[Session] = sessionmaker(
 )
 
 
-def get_session() -> Session:
-    """Create and return a new database session.
+def get_session() -> Generator[Session, None, None]:
+    """Yield a database session and ensure it is closed afterwards.
 
-    Caller is responsible for closing it (use as context manager or call .close()).
+    Use as a FastAPI dependency or context manager.
     """
-    return SessionLocal()
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
