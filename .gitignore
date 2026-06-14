@@ -1,2 +1,15 @@
 .superpowers/
 
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+
+# Frontend
+apps/web/node_modules/
+apps/web/dist/
+
+# Editor
+.DS_Store
