@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from eumpa_studio.server.routes.health import router as health_router
 from eumpa_studio.server.routes.jobs import router as jobs_router
+from eumpa_studio.server.routes.prompts import router as prompts_router
 from eumpa_studio.server.routes.projects import router as projects_router
 from eumpa_studio.server.routes.workflows import router as workflows_router
 
@@ -20,5 +21,6 @@ app.add_middleware(
 
 app.include_router(health_router, prefix="/api")
 app.include_router(jobs_router, prefix="/api")
+app.include_router(prompts_router, prefix="/api")
 app.include_router(projects_router, prefix="/api")
 app.include_router(workflows_router, prefix="/api")
