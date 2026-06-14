@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { fetchHealth } from "../api/client";
 import type { HealthResponse } from "../api/types";
 
 interface AppShellProps {
-  children?: React.ReactNode;
+  children?: ReactNode;
 }
 
 export function AppShell({ children }: AppShellProps) {
