@@ -23,14 +23,20 @@ def ensure_project_dirs(data_root: Path, project_id: str) -> Path:
     return inputs_dir
 
 
-def save_upload(upload: UploadFile, dest_dir: Path, data_root: Path) -> tuple[str, str]:
+def save_upload(
+    upload: UploadFile,
+    dest_dir: Path,
+    data_root: Path,
+    dest_name: str | None = None,
+) -> tuple[str, str]:
     """Save an uploaded file to dest_dir and return (storage_backend, relative_path).
 
     The relative_path is relative to data_root, e.g.
     ``"projects/{project_id}/inputs/audio.mp3"``.
+    Pass ``dest_name`` to override the filename (e.g. to add a unique prefix).
     """
     raw_name = upload.filename or "upload"
-    safe_name = Path(raw_name).name  # strips any directory components
+    safe_name = dest_name if dest_name is not None else Path(raw_name).name
     dest_path = dest_dir / safe_name
     with dest_path.open("wb") as out:
         shutil.copyfileobj(upload.file, out)

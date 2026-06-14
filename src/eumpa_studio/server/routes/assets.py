@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
@@ -19,6 +20,7 @@ from eumpa_studio.domain.statuses import AttemptStatus
 from eumpa_studio.server.deps import get_settings_dep
 from eumpa_studio.storage.media import (
     asset_url,
+    assets_dir,
     ensure_assets_dir,
     make_thumbnail,
     thumbnail_path,
@@ -81,9 +83,10 @@ def upload_asset(
     """Upload a new asset file for a project."""
     a_dir = ensure_assets_dir(settings.data_root, project_id)
 
-    backend, relative_path = save_upload(file, a_dir, settings.data_root)
-
     asset_id = str(uuid.uuid4())
+    safe_name = Path(file.filename or "upload").name
+    unique_name = f"{asset_id}_{safe_name}"
+    backend, relative_path = save_upload(file, a_dir, settings.data_root, dest_name=unique_name)
     asset = Asset(
         id=asset_id,
         project_id=project_id,
@@ -135,8 +138,6 @@ def serve_thumbnail(
     if asset is None or asset.project_id != project_id:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    from eumpa_studio.storage.media import assets_dir
-
     a_dir = assets_dir(settings.data_root, project_id)
     thumb = thumbnail_path(a_dir, asset_id)
     if thumb.exists():
@@ -184,7 +185,7 @@ def use_asset_for_shot(
         raise HTTPException(status_code=404, detail="Asset not found")
 
     shot = db.get(Shot, shot_id)
-    if shot is None:
+    if shot is None or shot.project_id != project_id:
         raise HTTPException(status_code=404, detail="Shot not found")
 
     attempt = Attempt(
