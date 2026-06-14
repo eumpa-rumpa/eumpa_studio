@@ -28,6 +28,34 @@ class AttemptSummary(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AttemptRead(BaseModel):
+    id: str
+    shot_id: str
+    parent_attempt_id: str | None
+    image_storage_backend: str | None
+    image_relative_path: str | None
+    end_image_storage_backend: str | None
+    end_image_relative_path: str | None
+    input_video_storage_backend: str | None
+    input_video_relative_path: str | None
+    shot_note_snapshot: str | None
+    prompt_ko: str | None
+    prompt_en: str | None
+    workflow_template_id: str | None
+    execution_mode_id: str | None
+    param_overrides: str | None
+    seed: int | None
+    workflow_snapshot: str | None
+    comfyui_prompt_id: str | None
+    output_metadata: str | None
+    review_note: str | None
+    status: str
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    model_config = {"from_attributes": True}
+
+
 class ShotRead(BaseModel):
     id: str
     project_id: str
@@ -66,6 +94,10 @@ class ShotUpdate(BaseModel):
     shot_note: str | None = None
     active_attempt_id: str | None = None
     status: str | None = None
+
+
+class AttemptUpdate(BaseModel):
+    review_note: str | None = None
 
 
 DbSession = Annotated[Session, Depends(get_session)]
@@ -128,6 +160,13 @@ def _validate_active_attempt(db: Session, shot: Shot, attempt_id: str | None) ->
         raise HTTPException(status_code=422, detail="Active attempt must belong to this shot")
 
 
+def _get_attempt_for_shot(db: Session, shot_id: str, attempt_id: str) -> Attempt:
+    attempt = db.get(Attempt, attempt_id)
+    if attempt is None or attempt.shot_id != shot_id:
+        raise HTTPException(status_code=404, detail="Attempt not found")
+    return attempt
+
+
 def _read_shot(db: Session, shot: Shot) -> ShotRead:
     counts = _attempt_counts(db, [shot.id])
     return _serialize_shot(shot, counts.get(shot.id, 0))
@@ -154,6 +193,20 @@ def get_shot(shot_id: str, db: DbSession) -> ShotRead:
     return _read_shot(db, _get_shot_with_active_attempt(db, shot_id))
 
 
+@router.get("/shots/{shot_id}/attempts", response_model=list[AttemptRead])
+def list_shot_attempts(shot_id: str, db: DbSession) -> list[AttemptRead]:
+    """List all render attempts for a shot."""
+    _get_shot_with_active_attempt(db, shot_id)
+    attempts = list(
+        db.scalars(
+            select(Attempt)
+            .where(Attempt.shot_id == shot_id)
+            .order_by(Attempt.created_at, Attempt.id)
+        ).all()
+    )
+    return [AttemptRead.model_validate(attempt) for attempt in attempts]
+
+
 @router.patch("/shots/{shot_id}", response_model=ShotRead)
 def update_shot(shot_id: str, body: ShotUpdate, db: DbSession) -> ShotRead:
     """Update editable shot fields."""
@@ -172,6 +225,26 @@ def update_shot(shot_id: str, body: ShotUpdate, db: DbSession) -> ShotRead:
     db.commit()
     db.refresh(shot)
     return _read_shot(db, _get_shot_with_active_attempt(db, shot.id))
+
+
+@router.patch("/shots/{shot_id}/attempts/{attempt_id}", response_model=AttemptRead)
+def update_shot_attempt(
+    shot_id: str,
+    attempt_id: str,
+    body: AttemptUpdate,
+    db: DbSession,
+) -> AttemptRead:
+    """Update review fields on a shot attempt."""
+    _get_shot_with_active_attempt(db, shot_id)
+    attempt = _get_attempt_for_shot(db, shot_id, attempt_id)
+    update_data = body.model_dump(exclude_unset=True)
+
+    for field, value in update_data.items():
+        setattr(attempt, field, value)
+
+    db.commit()
+    db.refresh(attempt)
+    return AttemptRead.model_validate(attempt)
 
 
 @router.post("/projects/{project_id}/shots", response_model=ShotRead, status_code=201)

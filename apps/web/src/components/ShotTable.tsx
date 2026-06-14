@@ -18,6 +18,10 @@ function formatSeconds(value: number): string {
 export function ShotTable({ projectId, onShotSelect }: ShotTableProps) {
   const { shots, loading, error } = useShots(projectId);
 
+  function selectShot(shot: Shot) {
+    onShotSelect?.(shot);
+  }
+
   if (loading) {
     return <p className="shot-table__state">Loading shots...</p>;
   }
@@ -47,7 +51,18 @@ export function ShotTable({ projectId, onShotSelect }: ShotTableProps) {
         </thead>
         <tbody>
           {shots.map((shot) => (
-            <tr key={shot.id}>
+            <tr
+              key={shot.id}
+              className="shot-table__row"
+              tabIndex={0}
+              onClick={() => selectShot(shot)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  selectShot(shot);
+                }
+              }}
+            >
               <td className="shot-table__index">{shot.order + 1}</td>
               <td className="shot-table__time">
                 {formatSeconds(shot.start_time)}-{formatSeconds(shot.end_time)}s
@@ -65,7 +80,10 @@ export function ShotTable({ projectId, onShotSelect }: ShotTableProps) {
                 <button
                   type="button"
                   className="shot-table__open"
-                  onClick={() => onShotSelect?.(shot)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    selectShot(shot);
+                  }}
                 >
                   Open
                 </button>
