@@ -2,6 +2,7 @@
 
 import os
 from functools import lru_cache
+from pathlib import Path
 
 
 class Settings:
@@ -10,6 +11,12 @@ class Settings:
     def __init__(self) -> None:
         self.comfyui_url: str = os.environ.get(
             "COMFYUI_URL", "http://localhost:8188"
+        )
+        self.data_root: Path = Path(
+            os.environ.get("EUMPA_DATA_ROOT", "data")
+        )
+        self.output_path: Path = Path(
+            os.environ.get("EUMPA_OUTPUT_PATH", "data/output")
         )
 
 

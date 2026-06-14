@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from eumpa_studio.server.routes.export import router as export_router
 from eumpa_studio.server.routes.jobs import router as jobs_router
 from eumpa_studio.server.routes.shots import router as shots_router
 
@@ -19,6 +20,7 @@ app.add_middleware(
 
 app.include_router(jobs_router, prefix="/api")
 app.include_router(shots_router, prefix="/api")
+app.include_router(export_router, prefix="/api")
 
 
 @app.get("/api/health")
