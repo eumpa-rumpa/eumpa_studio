@@ -7,11 +7,13 @@ dependencies = [
     "alembic>=1.18.4",
     "fastapi>=0.111.0",
     "sqlalchemy>=2.0.50",
+    "typer>=0.15.1",
     "uvicorn[standard]>=0.29.0",
 ]
 
 [project.scripts]
 eumpa-studio = "eumpa_studio.cli:main"
+eumpa_studio = "eumpa_studio.cli:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -1,61 +1,80 @@
-# Local Development Start Guide
+# Local Start
 
 ## Prerequisites
 
 - Python 3.11+
-- [uv](https://docs.astral.sh/uv/) — Python package manager
-- [Node.js](https://nodejs.org/) 18+
-- [pnpm](https://pnpm.io/) — Frontend package manager
+- uv
+- Node.js 20+
+- pnpm
 
-## Backend
+## Install
 
-Install dependencies and start the FastAPI server:
-
-```bash
-uv sync --dev
-uv run uvicorn eumpa_studio.server.app:app --reload --port 8000
-```
-
-The API will be available at `http://localhost:8000`.
-
-### Health check
+Install backend dependencies:
 
 ```bash
-curl http://localhost:8000/api/health
-# {"status":"ok"}
+uv sync
 ```
 
-### Run backend tests
-
-```bash
-uv run pytest tests/backend -q
-```
-
-## Frontend
-
-Install dependencies and start the Vite dev server:
+Install frontend dependencies:
 
 ```bash
 cd apps/web
 pnpm install
+```
+
+## Required Environment Variables
+
+The local defaults are suitable for single-machine MVP development.
+
+```bash
+export EUMPA_DATA_ROOT=.eumpa
+export EUMPA_COMFYUI_URL=http://localhost:8188
+export EUMPA_CODEX_CLI_PATH=codex
+```
+
+- `EUMPA_DATA_ROOT`: local data directory, default `.eumpa`
+- `EUMPA_COMFYUI_URL`: ComfyUI API URL, default `http://localhost:8188`
+- `EUMPA_CODEX_CLI_PATH`: Codex CLI executable, default `codex`
+
+## Start
+
+Start the backend, apply database migrations, and launch the job worker:
+
+```bash
+uv run eumpa_studio start
+```
+
+## Dev Mode
+
+Enable backend auto-reload:
+
+```bash
+uv run eumpa_studio start --reload
+```
+
+## Frontend Dev
+
+Start the Vite frontend dev server:
+
+```bash
+cd apps/web
 pnpm dev
 ```
 
-The app will be available at `http://localhost:5173`.
-
-The Vite dev server proxies `/api` requests to `http://localhost:8000`, so you
-need the backend running first.
-
-### Type-check
+## Health Check
 
 ```bash
-cd apps/web
-pnpm typecheck
+curl http://localhost:8000/api/health
 ```
 
-### Build for production
+Expected response:
+
+```json
+{"status":"ok"}
+```
+
+## Run Tests
 
 ```bash
-cd apps/web
-pnpm build
+uv run pytest tests/backend -q
 ```
