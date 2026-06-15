@@ -1,0 +1,362 @@
+"""Shot production routes for eumpa_studio API."""
+
+from __future__ import annotations
+
+import datetime
+import json
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, selectinload
+
+from eumpa_studio.config import Settings, get_settings_dep
+from eumpa_studio.db.session import get_session
+from eumpa_studio.domain.models import Attempt, Project, Shot
+from eumpa_studio.domain.statuses import AttemptStatus, ShotStatus
+
+router = APIRouter()
+
+
+class AttemptSummary(BaseModel):
+    id: str
+    status: str
+    image_storage_backend: str | None
+    image_relative_path: str | None
+    prompt_ko: str | None
+    prompt_en: str | None
+
+    model_config = {"from_attributes": True}
+
+
+class AttemptRead(BaseModel):
+    id: str
+    shot_id: str
+    parent_attempt_id: str | None
+    image_storage_backend: str | None
+    image_relative_path: str | None
+    end_image_storage_backend: str | None
+    end_image_relative_path: str | None
+    input_video_storage_backend: str | None
+    input_video_relative_path: str | None
+    shot_note_snapshot: str | None
+    prompt_ko: str | None
+    prompt_en: str | None
+    workflow_template_id: str | None
+    execution_mode_id: str | None
+    param_overrides: str | None
+    seed: int | None
+    workflow_snapshot: str | None
+    comfyui_prompt_id: str | None
+    output_metadata: str | None
+    review_note: str | None
+    status: str
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ShotRead(BaseModel):
+    id: str
+    project_id: str
+    order: int
+    start_time: float
+    end_time: float
+    duration: float
+    speaker: str | None
+    lyrics_text: str | None
+    shot_note: str | None
+    status: str
+    active_attempt_id: str | None
+    active_attempt: AttemptSummary | None
+    attempt_count: int
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    model_config = {"from_attributes": False}
+
+
+class ShotCreate(BaseModel):
+    order: int
+    start_time: float
+    end_time: float
+    duration: float | None = None
+    speaker: str | None = None
+    lyrics_text: str | None = None
+    shot_note: str | None = None
+    status: str = ShotStatus.NEEDS_INPUT.value
+    active_attempt_id: str | None = None
+
+
+class ShotUpdate(BaseModel):
+    start_time: float | None = None
+    end_time: float | None = None
+    shot_note: str | None = None
+    active_attempt_id: str | None = None
+    status: str | None = None
+
+
+class AttemptUpdate(BaseModel):
+    review_note: str | None = None
+
+
+DbSession = Annotated[Session, Depends(get_session)]
+SettingsDep = Annotated[Settings, Depends(get_settings_dep)]
+
+# Statuses that are valid for the review endpoint
+_REVIEW_STATUSES = {
+    AttemptStatus.NEEDS_REVIEW.value,
+    AttemptStatus.SELECTED.value,
+    AttemptStatus.REDO.value,
+    AttemptStatus.REJECTED.value,
+    AttemptStatus.FAILED.value,
+}
+
+
+class ReviewBody(BaseModel):
+    status: str
+    review_note: str | None = None
+
+
+def _attempt_counts(db: Session, shot_ids: list[str]) -> dict[str, int]:
+    if not shot_ids:
+        return {}
+
+    rows = db.execute(
+        select(Attempt.shot_id, func.count(Attempt.id))
+        .where(Attempt.shot_id.in_(shot_ids))
+        .group_by(Attempt.shot_id)
+    ).all()
+    return {shot_id: count for shot_id, count in rows}
+
+
+def _serialize_shot(shot: Shot, attempt_count: int) -> ShotRead:
+    active_attempt = (
+        AttemptSummary.model_validate(shot.active_attempt)
+        if shot.active_attempt is not None
+        else None
+    )
+    return ShotRead(
+        id=shot.id,
+        project_id=shot.project_id,
+        order=shot.order,
+        start_time=shot.start_time,
+        end_time=shot.end_time,
+        duration=shot.duration,
+        speaker=shot.speaker,
+        lyrics_text=shot.lyrics_text,
+        shot_note=shot.shot_note,
+        status=shot.status,
+        active_attempt_id=shot.active_attempt_id,
+        active_attempt=active_attempt,
+        attempt_count=attempt_count,
+        created_at=shot.created_at,
+        updated_at=shot.updated_at,
+    )
+
+
+def _get_shot_with_active_attempt(db: Session, shot_id: str) -> Shot:
+    shot = db.scalar(
+        select(Shot)
+        .where(Shot.id == shot_id)
+        .options(selectinload(Shot.active_attempt))
+    )
+    if shot is None:
+        raise HTTPException(status_code=404, detail="Shot not found")
+    return shot
+
+
+def _validate_active_attempt(db: Session, shot: Shot, attempt_id: str | None) -> None:
+    if attempt_id is None:
+        return
+
+    attempt = db.get(Attempt, attempt_id)
+    if attempt is None or attempt.shot_id != shot.id:
+        raise HTTPException(status_code=422, detail="Active attempt must belong to this shot")
+
+
+def _get_attempt_for_shot(db: Session, shot_id: str, attempt_id: str) -> Attempt:
+    attempt = db.get(Attempt, attempt_id)
+    if attempt is None or attempt.shot_id != shot_id:
+        raise HTTPException(status_code=404, detail="Attempt not found")
+    return attempt
+
+
+def _read_shot(db: Session, shot: Shot) -> ShotRead:
+    counts = _attempt_counts(db, [shot.id])
+    return _serialize_shot(shot, counts.get(shot.id, 0))
+
+
+@router.get("/shots", response_model=list[ShotRead])
+def list_shots(project_id: str, db: DbSession) -> list[ShotRead]:
+    """List shots for a project ordered by shot order."""
+    shots = list(
+        db.scalars(
+            select(Shot)
+            .where(Shot.project_id == project_id)
+            .options(selectinload(Shot.active_attempt))
+            .order_by(Shot.order, Shot.id)
+        ).all()
+    )
+    counts = _attempt_counts(db, [shot.id for shot in shots])
+    return [_serialize_shot(shot, counts.get(shot.id, 0)) for shot in shots]
+
+
+@router.get("/shots/{shot_id}", response_model=ShotRead)
+def get_shot(shot_id: str, db: DbSession) -> ShotRead:
+    """Get a single shot with active attempt summary and attempt count."""
+    return _read_shot(db, _get_shot_with_active_attempt(db, shot_id))
+
+
+@router.get("/shots/{shot_id}/attempts", response_model=list[AttemptRead])
+def list_shot_attempts(shot_id: str, db: DbSession) -> list[AttemptRead]:
+    """List all render attempts for a shot."""
+    _get_shot_with_active_attempt(db, shot_id)
+    attempts = list(
+        db.scalars(
+            select(Attempt)
+            .where(Attempt.shot_id == shot_id)
+            .order_by(Attempt.created_at, Attempt.id)
+        ).all()
+    )
+    return [AttemptRead.model_validate(attempt) for attempt in attempts]
+
+
+@router.patch("/shots/{shot_id}", response_model=ShotRead)
+def update_shot(shot_id: str, body: ShotUpdate, db: DbSession) -> ShotRead:
+    """Update editable shot fields."""
+    shot = _get_shot_with_active_attempt(db, shot_id)
+    update_data = body.model_dump(exclude_unset=True)
+
+    if "active_attempt_id" in update_data:
+        _validate_active_attempt(db, shot, body.active_attempt_id)
+
+    for field, value in update_data.items():
+        setattr(shot, field, value)
+
+    if "start_time" in update_data or "end_time" in update_data:
+        shot.duration = shot.end_time - shot.start_time
+
+    db.commit()
+    db.refresh(shot)
+    return _read_shot(db, _get_shot_with_active_attempt(db, shot.id))
+
+
+@router.patch("/shots/{shot_id}/attempts/{attempt_id}", response_model=AttemptRead)
+def update_shot_attempt(
+    shot_id: str,
+    attempt_id: str,
+    body: AttemptUpdate,
+    db: DbSession,
+) -> AttemptRead:
+    """Update review fields on a shot attempt."""
+    _get_shot_with_active_attempt(db, shot_id)
+    attempt = _get_attempt_for_shot(db, shot_id, attempt_id)
+    update_data = body.model_dump(exclude_unset=True)
+
+    for field, value in update_data.items():
+        setattr(attempt, field, value)
+
+    db.commit()
+    db.refresh(attempt)
+    return AttemptRead.model_validate(attempt)
+
+
+@router.post("/projects/{project_id}/shots", response_model=ShotRead, status_code=201)
+def create_shot(project_id: str, body: ShotCreate, db: DbSession) -> ShotRead:
+    """Create a shot manually for a project."""
+    if db.get(Project, project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    duration = body.duration
+    if duration is None:
+        duration = body.end_time - body.start_time
+
+    shot = Shot(
+        project_id=project_id,
+        order=body.order,
+        start_time=body.start_time,
+        end_time=body.end_time,
+        duration=duration,
+        speaker=body.speaker,
+        lyrics_text=body.lyrics_text,
+        shot_note=body.shot_note,
+        status=body.status,
+        active_attempt_id=body.active_attempt_id,
+    )
+    _validate_active_attempt(db, shot, body.active_attempt_id)
+
+    db.add(shot)
+    db.commit()
+    db.refresh(shot)
+    return _read_shot(db, _get_shot_with_active_attempt(db, shot.id))
+
+
+@router.post(
+    "/shots/{shot_id}/attempts/{attempt_id}/review",
+    response_model=AttemptRead,
+)
+def review_attempt(
+    shot_id: str,
+    attempt_id: str,
+    body: ReviewBody,
+    db: DbSession,
+) -> Attempt:
+    """Update attempt review status and optionally set it as the active attempt."""
+    if body.status not in _REVIEW_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Invalid review status {body.status!r}. "
+                f"Must be one of: {sorted(_REVIEW_STATUSES)}"
+            ),
+        )
+
+    attempt = db.get(Attempt, attempt_id)
+    if attempt is None or attempt.shot_id != shot_id:
+        raise HTTPException(status_code=404, detail="Attempt not found")
+
+    attempt.status = body.status
+    if body.review_note is not None:
+        attempt.review_note = body.review_note
+
+    if body.status == AttemptStatus.SELECTED.value:
+        shot = db.get(Shot, shot_id)
+        if shot is None:
+            raise HTTPException(status_code=404, detail="Shot not found")
+        shot.active_attempt_id = attempt_id
+
+    db.commit()
+    db.refresh(attempt)
+    return AttemptRead.model_validate(attempt)
+
+
+@router.get("/shots/{shot_id}/attempts/{attempt_id}/video-url")
+def get_video_url(
+    shot_id: str,
+    attempt_id: str,
+    db: DbSession,
+    settings: SettingsDep,
+) -> dict[str, str]:
+    """Return a ComfyUI view URL for the attempt's output video."""
+    attempt = db.get(Attempt, attempt_id)
+    if attempt is None or attempt.shot_id != shot_id:
+        raise HTTPException(status_code=404, detail="Attempt not found")
+
+    if not attempt.output_metadata:
+        raise HTTPException(status_code=404, detail="No output metadata for this attempt")
+
+    try:
+        meta = json.loads(attempt.output_metadata)
+    except (json.JSONDecodeError, TypeError):
+        raise HTTPException(status_code=404, detail="Invalid output metadata")
+
+    filename = meta.get("filename", "")
+    subfolder = meta.get("subfolder", "")
+    file_type = meta.get("type", "output")
+    base_url = settings.comfyui_url.rstrip("/")
+
+    video_url = f"{base_url}/view?filename={filename}&subfolder={subfolder}&type={file_type}"
+    return {"video_url": video_url}
