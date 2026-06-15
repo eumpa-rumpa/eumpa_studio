@@ -28,3 +28,8 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return the cached application settings singleton."""
     return Settings()
+
+
+def get_settings_dep() -> Settings:
+    """FastAPI dependency that returns the application settings singleton."""
+    return get_settings()

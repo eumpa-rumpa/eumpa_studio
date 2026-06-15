@@ -75,6 +75,19 @@ export interface Attempt {
   updated_at: string;
 }
 
+/** An asset (image/file) belonging to a project */
+export interface Asset {
+  id: string;
+  project_id: string;
+  name: string;
+  storage_backend: string;
+  relative_path: string;
+  mime_type: string | null;
+  created_at: string;
+  url: string;
+  thumb_url: string;
+}
+
 /** A shot returned from the API */
 export interface Shot {
   id: string;

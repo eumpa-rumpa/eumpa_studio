@@ -208,11 +208,11 @@ class ExecutionMode(Base):
         String(36), ForeignKey("workflow_templates.id"), nullable=False
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
-    required_inputs: Mapped[str] = mapped_column(Text, nullable=False)
-    optional_inputs: Mapped[str] = mapped_column(Text, nullable=False)
-    node_bindings: Mapped[str] = mapped_column(Text, nullable=False)
-    validation_rules: Mapped[str] = mapped_column(Text, nullable=False)
-    exposed_params: Mapped[str] = mapped_column(Text, nullable=False)
+    required_inputs: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    optional_inputs: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    node_bindings: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    validation_rules: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    exposed_params: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=func.now(), nullable=False)
     updated_at: Mapped[datetime.datetime] = mapped_column(
