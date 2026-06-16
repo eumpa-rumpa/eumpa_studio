@@ -12,7 +12,7 @@ interface UseJobsResult {
   loading: boolean;
 }
 
-export function useJobs(): UseJobsResult {
+export function useJobs(refreshKey = 0): UseJobsResult {
   const [all, setAll] = useState<Job[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,7 +45,7 @@ export function useJobs(): UseJobsResult {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [refreshKey]);
 
   return useMemo(
     () => ({

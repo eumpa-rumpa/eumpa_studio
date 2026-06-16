@@ -55,6 +55,28 @@ export async function fetchShots(projectId: string): Promise<Shot[]> {
   return get<Shot[]>(`/shots?${params.toString()}`);
 }
 
+export async function enqueueAlignment(projectId: string): Promise<Job> {
+  return postJson<Job>(`/projects/${encodeURIComponent(projectId)}/align`, {});
+}
+
+export interface CreateShotBody {
+  order: number;
+  start_time: number;
+  end_time: number;
+  duration?: number;
+  speaker?: string | null;
+  lyrics_text?: string | null;
+  shot_note?: string | null;
+  status?: string;
+}
+
+export async function createShot(
+  projectId: string,
+  body: CreateShotBody,
+): Promise<Shot> {
+  return postJson<Shot>(`/projects/${encodeURIComponent(projectId)}/shots`, body);
+}
+
 export async function fetchShotAttempts(shotId: string): Promise<Attempt[]> {
   return get<Attempt[]>(`/shots/${shotId}/attempts`);
 }

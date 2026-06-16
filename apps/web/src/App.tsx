@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { fetchProject } from "./api/client";
 import type { Project, Shot } from "./api/types";
 import { AppShell } from "./components/AppShell";
 import { ProjectChooser } from "./components/ProjectChooser";
@@ -10,15 +11,59 @@ export function App() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedShot, setSelectedShot] = useState<Shot | null>(null);
   const [shotListVersion, setShotListVersion] = useState(0);
+  const [queueRefreshKey, setQueueRefreshKey] = useState(0);
+  const [restoringProject, setRestoringProject] = useState(true);
+
+  function selectProject(project: Project) {
+    window.localStorage.setItem("eumpa-studio:selected-project-id", project.id);
+    setSelectedProject(project);
+    setSelectedShot(null);
+  }
+
+  function switchProject() {
+    window.localStorage.removeItem("eumpa-studio:selected-project-id");
+    setSelectedProject(null);
+    setSelectedShot(null);
+  }
+
+  useEffect(() => {
+    const storedProjectId = window.localStorage.getItem("eumpa-studio:selected-project-id");
+    if (!storedProjectId) {
+      setRestoringProject(false);
+      return;
+    }
+
+    let cancelled = false;
+    fetchProject(storedProjectId)
+      .then((project) => {
+        if (!cancelled) {
+          setSelectedProject(project);
+          setSelectedShot(null);
+        }
+      })
+      .catch(() => {
+        window.localStorage.removeItem("eumpa-studio:selected-project-id");
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setRestoringProject(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (selectedProject === null) {
     return (
-      <ProjectChooser
-        onSelect={(project) => {
-          setSelectedProject(project);
-          setSelectedShot(null);
-        }}
-      />
+      <AppShell>
+        {restoringProject ? (
+          <p className="app-shell__state">Opening last project...</p>
+        ) : (
+          <ProjectChooser onSelect={selectProject} />
+        )}
+      </AppShell>
     );
   }
 
@@ -33,14 +78,22 @@ export function App() {
                 {selectedProject.name}
               </h2>
             </div>
+            <button
+              type="button"
+              className="project-workspace__switch"
+              onClick={switchProject}
+            >
+              Switch project
+            </button>
           </div>
           <ShotTable
             key={shotListVersion}
             projectId={selectedProject.id}
             onShotSelect={setSelectedShot}
+            onJobsUpdated={() => setQueueRefreshKey((key) => key + 1)}
           />
         </section>
-        <QueuePanel />
+        <QueuePanel refreshKey={queueRefreshKey} />
       </div>
       <ShotDrawer
         shot={selectedShot}
