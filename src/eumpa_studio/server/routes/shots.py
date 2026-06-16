@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from eumpa_studio.config import Settings, get_settings_dep
 from eumpa_studio.db.session import get_session
-from eumpa_studio.domain.models import Attempt, Project, Shot
+from eumpa_studio.domain.models import Attempt, ExecutionMode, Project, Shot, WorkflowTemplate
 from eumpa_studio.domain.statuses import AttemptStatus, ShotStatus
 
 router = APIRouter()
@@ -101,6 +101,8 @@ class ShotUpdate(BaseModel):
 class AttemptUpdate(BaseModel):
     prompt_ko: str | None = None
     prompt_en: str | None = None
+    workflow_template_id: str | None = None
+    execution_mode_id: str | None = None
     review_note: str | None = None
 
 
@@ -186,6 +188,33 @@ def _get_attempt_for_shot(db: Session, shot_id: str, attempt_id: str) -> Attempt
     return attempt
 
 
+def _validate_attempt_workflow_config(
+    db: Session,
+    workflow_template_id: str | None,
+    execution_mode_id: str | None,
+) -> None:
+    if workflow_template_id is None and execution_mode_id is None:
+        return
+    if workflow_template_id is None or execution_mode_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="workflow_template_id and execution_mode_id must be set together",
+        )
+
+    template = db.get(WorkflowTemplate, workflow_template_id)
+    if template is None:
+        raise HTTPException(status_code=422, detail="Workflow template not found")
+
+    mode = db.get(ExecutionMode, execution_mode_id)
+    if mode is None:
+        raise HTTPException(status_code=422, detail="Execution mode not found")
+    if mode.workflow_template_id != workflow_template_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Execution mode must belong to the selected workflow template",
+        )
+
+
 def _read_shot(db: Session, shot: Shot) -> ShotRead:
     counts = _attempt_counts(db, [shot.id])
     return _serialize_shot(shot, counts.get(shot.id, 0))
@@ -257,6 +286,17 @@ def update_shot_attempt(
     _get_shot_with_active_attempt(db, shot_id)
     attempt = _get_attempt_for_shot(db, shot_id, attempt_id)
     update_data = body.model_dump(exclude_unset=True)
+
+    workflow_template_id = update_data.get(
+        "workflow_template_id",
+        attempt.workflow_template_id,
+    )
+    execution_mode_id = update_data.get(
+        "execution_mode_id",
+        attempt.execution_mode_id,
+    )
+    if "workflow_template_id" in update_data or "execution_mode_id" in update_data:
+        _validate_attempt_workflow_config(db, workflow_template_id, execution_mode_id)
 
     for field, value in update_data.items():
         setattr(attempt, field, value)

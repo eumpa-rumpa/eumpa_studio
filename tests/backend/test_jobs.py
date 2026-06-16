@@ -10,8 +10,9 @@ from sqlalchemy.pool import StaticPool
 
 from eumpa_studio.db.base import Base
 from eumpa_studio.db.session import get_session
-from eumpa_studio.domain.models import Job
+from eumpa_studio.domain.models import Attempt, ExecutionMode, Job, Project, Shot, WorkflowTemplate
 from eumpa_studio.domain.statuses import JobStatus
+from eumpa_studio.execution.jobs import AppJobRunner
 from eumpa_studio.execution.worker import WorkerLoop
 from eumpa_studio.server.app import app
 
@@ -173,3 +174,110 @@ def test_jobs_api_enqueues_lists_and_gets_jobs(api_client: TestClient):
 
     assert get_response.status_code == 200
     assert get_response.json() == created
+
+
+def test_app_job_runner_dispatches_align_and_render(session_factory):
+    class Settings:
+        comfyui_url = "http://comfy.local:8188"
+        alignment_command = "align"
+        data_root = "."
+
+    calls: list[tuple[str, str, str]] = []
+
+    def align_runner(session: Session, project_id: str, settings: Settings) -> None:
+        calls.append(("align", project_id, settings.alignment_command))
+
+    def render_runner(session: Session, attempt_id: str, comfyui_url: str) -> None:
+        calls.append(("render", attempt_id, comfyui_url))
+
+    runner = AppJobRunner(
+        session_factory=session_factory,
+        settings=Settings(),
+        align_runner=align_runner,
+        render_runner=render_runner,
+    )
+
+    runner("align", "project-1")
+    runner("render", "attempt-1")
+    runner("render_attempt", "attempt-2")
+
+    assert calls == [
+        ("align", "project-1", "align"),
+        ("render", "attempt-1", "http://comfy.local:8188"),
+        ("render", "attempt-2", "http://comfy.local:8188"),
+    ]
+
+
+def test_render_attempt_endpoint_requires_workflow_configuration(
+    api_client: TestClient,
+    session_factory,
+):
+    with session_factory() as session:
+        project = Project(name="Render Project")
+        session.add(project)
+        session.commit()
+        shot = Shot(
+            project_id=project.id,
+            order=0,
+            start_time=0,
+            end_time=5,
+            duration=5,
+        )
+        session.add(shot)
+        session.commit()
+        attempt = Attempt(shot_id=shot.id)
+        session.add(attempt)
+        session.commit()
+        shot_id = shot.id
+        attempt_id = attempt.id
+
+    response = api_client.post(f"/api/shots/{shot_id}/attempts/{attempt_id}/render")
+
+    assert response.status_code == 422
+    assert "workflow" in response.json()["detail"]
+
+
+def test_render_attempt_endpoint_enqueues_configured_attempt(
+    api_client: TestClient,
+    session_factory,
+):
+    with session_factory() as session:
+        project = Project(name="Configured Render Project")
+        session.add(project)
+        session.commit()
+        shot = Shot(
+            project_id=project.id,
+            order=0,
+            start_time=0,
+            end_time=5,
+            duration=5,
+        )
+        template = WorkflowTemplate(name="LTX", json_path="workflow.json")
+        session.add_all([shot, template])
+        session.commit()
+        mode = ExecutionMode(
+            workflow_template_id=template.id,
+            name="Image to video",
+            required_inputs='["image", "prompt_en"]',
+            node_bindings="{}",
+        )
+        session.add(mode)
+        session.commit()
+        attempt = Attempt(
+            shot_id=shot.id,
+            workflow_template_id=template.id,
+            execution_mode_id=mode.id,
+        )
+        session.add(attempt)
+        session.commit()
+        shot_id = shot.id
+        attempt_id = attempt.id
+
+    response = api_client.post(f"/api/shots/{shot_id}/attempts/{attempt_id}/render")
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["type"] == "render"
+    assert body["target_entity_type"] == "attempt"
+    assert body["target_entity_id"] == attempt_id
+    assert body["status"] == JobStatus.PENDING.value

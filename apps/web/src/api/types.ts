@@ -38,6 +38,32 @@ export interface Job {
   finished_at: string | null;
 }
 
+/** A ComfyUI workflow template available for rendering */
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  json_path: string;
+  file_hash: string | null;
+  version: string | null;
+  compatibility_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A render execution mode for a workflow template */
+export interface ExecutionMode {
+  id: string;
+  workflow_template_id: string;
+  name: string;
+  required_inputs: string | null;
+  optional_inputs: string | null;
+  node_bindings: string | null;
+  validation_rules: string | null;
+  exposed_params: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 /** Summary of a shot attempt embedded in shot responses */
 export interface AttemptSummary {
   id: string;

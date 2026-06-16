@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import type { Asset, Attempt, Shot } from "../api/types";
+import type { Asset, Attempt, ExecutionMode, Job, Shot, WorkflowTemplate } from "../api/types";
 import { ShotDrawer } from "./ShotDrawer";
 
 const shot: Shot = {
@@ -60,6 +60,50 @@ const attempt: Attempt = {
   updated_at: "2026-06-16T00:00:00Z",
 };
 
+const configuredAttempt: Attempt = {
+  ...attempt,
+  workflow_template_id: "template-1",
+  execution_mode_id: "mode-1",
+};
+
+const template: WorkflowTemplate = {
+  id: "template-1",
+  name: "LTX image to video",
+  json_path: "workflow.json",
+  file_hash: null,
+  version: null,
+  compatibility_notes: null,
+  created_at: "2026-06-16T00:00:00Z",
+  updated_at: "2026-06-16T00:00:00Z",
+};
+
+const mode: ExecutionMode = {
+  id: "mode-1",
+  workflow_template_id: "template-1",
+  name: "Image prompt",
+  required_inputs: '["image", "prompt_en"]',
+  optional_inputs: null,
+  node_bindings: "{}",
+  validation_rules: null,
+  exposed_params: null,
+  created_at: "2026-06-16T00:00:00Z",
+  updated_at: "2026-06-16T00:00:00Z",
+};
+
+const renderJob: Job = {
+  id: "job-1",
+  type: "render",
+  target_entity_type: "attempt",
+  target_entity_id: "attempt-1",
+  status: "Pending",
+  logs: null,
+  error: null,
+  created_at: "2026-06-16T00:00:00Z",
+  updated_at: "2026-06-16T00:00:00Z",
+  started_at: null,
+  finished_at: null,
+};
+
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
     status: 200,
@@ -83,6 +127,12 @@ beforeEach(() => {
     if (url === "/api/assets/project-1") {
       return Promise.resolve(jsonResponse([asset]));
     }
+    if (url === "/api/workflows/templates") {
+      return Promise.resolve(jsonResponse([template]));
+    }
+    if (url === "/api/workflows/templates/template-1/modes") {
+      return Promise.resolve(jsonResponse([mode]));
+    }
     if (
       url === "/api/assets/project-1/asset-1/use-for-shot/shot-1" &&
       init?.method === "POST"
@@ -98,6 +148,18 @@ beforeEach(() => {
           attempt_count: 1,
         }),
       );
+    }
+    if (
+      url === "/api/shots/shot-1/attempts/attempt-1" &&
+      init?.method === "PATCH"
+    ) {
+      return Promise.resolve(jsonResponse(configuredAttempt));
+    }
+    if (
+      url === "/api/shots/shot-1/attempts/attempt-1/render" &&
+      init?.method === "POST"
+    ) {
+      return Promise.resolve(jsonResponse(renderJob, { status: 201 }));
     }
 
     return Promise.reject(new Error(`Unhandled request: ${url}`));
@@ -135,5 +197,18 @@ describe("ShotDrawer asset attempts", () => {
       expect(screen.getByRole("textbox", { name: "Review Note" })).toBeEnabled();
       expect(onShotUpdated).toHaveBeenCalled();
     });
+
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "Workflow Template" }),
+      "template-1",
+    );
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "Execution Mode" }),
+      "mode-1",
+    );
+    await user.click(screen.getByRole("button", { name: "Save Render Setup" }));
+    await user.click(await screen.findByRole("button", { name: "Queue Render" }));
+
+    expect(await screen.findByText("Render job queued")).toBeInTheDocument();
   });
 });

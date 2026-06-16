@@ -11,7 +11,7 @@ from sqlalchemy.pool import StaticPool
 from eumpa_studio.config import Settings
 from eumpa_studio.db.base import Base
 from eumpa_studio.db.session import get_session
-from eumpa_studio.domain.models import Attempt, Project, Shot
+from eumpa_studio.domain.models import Attempt, ExecutionMode, Project, Shot, WorkflowTemplate
 from eumpa_studio.domain.statuses import AttemptStatus, ShotStatus
 from eumpa_studio.server.app import app
 from eumpa_studio.server.deps import get_settings_dep
@@ -191,3 +191,43 @@ def test_update_attempt_prompts(api_client: TestClient, db_session):
     assert body["id"] == attempt.id
     assert body["prompt_ko"] == "브라우저에서 저장한 한국어 프롬프트"
     assert body["prompt_en"] == "Prompt saved from the browser"
+
+
+def test_update_attempt_workflow_configuration(api_client: TestClient, db_session):
+    project = Project(name="Workflow Config Project")
+    db_session.add(project)
+    db_session.commit()
+
+    shot = Shot(
+        project_id=project.id,
+        order=0,
+        start_time=0.0,
+        end_time=2.0,
+        duration=2.0,
+    )
+    template = WorkflowTemplate(name="LTX", json_path="workflow.json")
+    db_session.add_all([shot, template])
+    db_session.commit()
+
+    mode = ExecutionMode(
+        workflow_template_id=template.id,
+        name="Image to video",
+        required_inputs='["image", "prompt_en"]',
+        node_bindings="{}",
+    )
+    attempt = Attempt(shot_id=shot.id)
+    db_session.add_all([mode, attempt])
+    db_session.commit()
+
+    response = api_client.patch(
+        f"/api/shots/{shot.id}/attempts/{attempt.id}",
+        json={
+            "workflow_template_id": template.id,
+            "execution_mode_id": mode.id,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["workflow_template_id"] == template.id
+    assert body["execution_mode_id"] == mode.id

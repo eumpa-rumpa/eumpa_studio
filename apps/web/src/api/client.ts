@@ -1,4 +1,13 @@
-import type { Attempt, Asset, HealthResponse, Job, Project, Shot } from "./types";
+import type {
+  Attempt,
+  Asset,
+  ExecutionMode,
+  HealthResponse,
+  Job,
+  Project,
+  Shot,
+  WorkflowTemplate,
+} from "./types";
 
 const BASE_URL = "/api";
 
@@ -48,6 +57,16 @@ export async function fetchProject(id: string): Promise<Project> {
 
 export async function fetchJobs(): Promise<Job[]> {
   return get<Job[]>("/jobs");
+}
+
+export async function fetchWorkflowTemplates(): Promise<WorkflowTemplate[]> {
+  return get<WorkflowTemplate[]>("/workflows/templates");
+}
+
+export async function fetchExecutionModes(templateId: string): Promise<ExecutionMode[]> {
+  return get<ExecutionMode[]>(
+    `/workflows/templates/${encodeURIComponent(templateId)}/modes`,
+  );
 }
 
 export async function fetchShots(projectId: string): Promise<Shot[]> {
@@ -116,6 +135,8 @@ export async function generatePrompt(attemptId: string): Promise<Attempt> {
 export interface SavePromptBody {
   prompt_ko?: string | null;
   prompt_en?: string | null;
+  workflow_template_id?: string | null;
+  execution_mode_id?: string | null;
   review_note?: string | null;
 }
 
@@ -134,4 +155,11 @@ export async function savePrompt(
 
 export async function fetchAssets(projectId: string): Promise<Asset[]> {
   return get<Asset[]>(`/assets/${projectId}`);
+}
+
+export async function enqueueRender(shotId: string, attemptId: string): Promise<Job> {
+  return postJson<Job>(
+    `/shots/${encodeURIComponent(shotId)}/attempts/${encodeURIComponent(attemptId)}/render`,
+    {},
+  );
 }
