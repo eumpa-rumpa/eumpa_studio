@@ -38,13 +38,19 @@ def api_client(session_factory):
     app.dependency_overrides.clear()
 
 
-def test_create_execution_mode_defaults_optional_json_fields(api_client: TestClient):
+def test_create_execution_mode_defaults_optional_json_fields(api_client: TestClient, tmp_path):
+    workflow_path = tmp_path / "workflow.json"
+    workflow_path.write_text('{"1": {"class_type": "TestNode", "inputs": {}}}', encoding="utf-8")
+
     template_response = api_client.post(
         "/api/workflows/templates",
-        json={"name": "LTX", "json_path": "workflow.json"},
+        json={"name": "LTX", "json_path": str(workflow_path)},
     )
     assert template_response.status_code == 201
-    template_id = template_response.json()["id"]
+    template_body = template_response.json()
+    template_id = template_body["id"]
+    assert template_body["is_available"] is True
+    assert template_body["validation_error"] is None
 
     mode_response = api_client.post(
         f"/api/workflows/templates/{template_id}/modes",
@@ -60,3 +66,30 @@ def test_create_execution_mode_defaults_optional_json_fields(api_client: TestCli
     assert body["optional_inputs"] == "[]"
     assert body["validation_rules"] == "{}"
     assert body["exposed_params"] == "{}"
+
+
+def test_create_workflow_template_rejects_missing_file(api_client: TestClient):
+    template_response = api_client.post(
+        "/api/workflows/templates",
+        json={"name": "Missing", "json_path": "/tmp/does-not-exist-eumpa-workflow.json"},
+    )
+
+    assert template_response.status_code == 422
+    assert "Workflow template file not found" in template_response.json()["detail"]
+
+
+def test_bootstrap_ltx_lipsync_skill_workflow_is_idempotent(api_client: TestClient):
+    first_response = api_client.post("/api/workflows/skill-defaults/ltx-lipsync")
+    second_response = api_client.post("/api/workflows/skill-defaults/ltx-lipsync")
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 201
+    first = first_response.json()
+    second = second_response.json()
+    assert first["template"]["id"] == second["template"]["id"]
+    assert first["mode"]["id"] == second["mode"]["id"]
+    assert first["template"]["is_available"] is True
+    assert first["mode"]["required_inputs"] == (
+        '["image", "audio", "start_time", "duration", "prompt_en"]'
+    )
+    assert '"node_id": "14"' in first["mode"]["node_bindings"]

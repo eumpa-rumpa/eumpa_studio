@@ -73,6 +73,8 @@ const template: WorkflowTemplate = {
   file_hash: null,
   version: null,
   compatibility_notes: null,
+  is_available: true,
+  validation_error: null,
   created_at: "2026-06-16T00:00:00Z",
   updated_at: "2026-06-16T00:00:00Z",
 };
@@ -193,7 +195,7 @@ describe("ShotDrawer asset attempts", () => {
     expect(await screen.findByText("No prompt")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Generate Prompt" })).toBeEnabled();
-      expect(screen.getByRole("button", { name: "Play Video" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Play Video" })).toBeDisabled();
       expect(screen.getByRole("textbox", { name: "Review Note" })).toBeEnabled();
       expect(onShotUpdated).toHaveBeenCalled();
     });

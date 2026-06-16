@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Protocol
 
 from sqlalchemy.orm import Session
@@ -33,7 +34,7 @@ class AppJobRunner:
         session_factory: Callable[[], Session],
         settings: object,
         align_runner: Callable[[Session, str, object], None] = run_alignment_job,
-        render_runner: Callable[[Session, str, str], None] = run_render_job,
+        render_runner: Callable[[Session, str, str, Path], None] = run_render_job,
     ) -> None:
         self.session_factory = session_factory
         self.settings = settings
@@ -52,7 +53,8 @@ class AppJobRunner:
 
             if job_type in {"render", "render_attempt"}:
                 comfyui_url = str(getattr(self.settings, "comfyui_url"))
-                self.render_runner(session, target_entity_id, comfyui_url)
+                data_root = Path(getattr(self.settings, "data_root", "data"))
+                self.render_runner(session, target_entity_id, comfyui_url, data_root)
                 session.commit()
                 return
 

@@ -182,13 +182,18 @@ def test_app_job_runner_dispatches_align_and_render(session_factory):
         alignment_command = "align"
         data_root = "."
 
-    calls: list[tuple[str, str, str]] = []
+    calls: list[tuple[str, str, str, str | None]] = []
 
     def align_runner(session: Session, project_id: str, settings: Settings) -> None:
-        calls.append(("align", project_id, settings.alignment_command))
+        calls.append(("align", project_id, settings.alignment_command, None))
 
-    def render_runner(session: Session, attempt_id: str, comfyui_url: str) -> None:
-        calls.append(("render", attempt_id, comfyui_url))
+    def render_runner(
+        session: Session,
+        attempt_id: str,
+        comfyui_url: str,
+        data_root,
+    ) -> None:
+        calls.append(("render", attempt_id, comfyui_url, str(data_root)))
 
     runner = AppJobRunner(
         session_factory=session_factory,
@@ -202,9 +207,9 @@ def test_app_job_runner_dispatches_align_and_render(session_factory):
     runner("render_attempt", "attempt-2")
 
     assert calls == [
-        ("align", "project-1", "align"),
-        ("render", "attempt-1", "http://comfy.local:8188"),
-        ("render", "attempt-2", "http://comfy.local:8188"),
+        ("align", "project-1", "align", None),
+        ("render", "attempt-1", "http://comfy.local:8188", "."),
+        ("render", "attempt-2", "http://comfy.local:8188", "."),
     ]
 
 

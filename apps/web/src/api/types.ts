@@ -46,6 +46,8 @@ export interface WorkflowTemplate {
   file_hash: string | null;
   version: string | null;
   compatibility_notes: string | null;
+  is_available: boolean;
+  validation_error: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -2,7 +2,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { App } from "./App";
-import type { HealthResponse, Job, Project, Shot } from "./api/types";
+import type { HealthResponse, Job, Project, Shot, WorkflowTemplate } from "./api/types";
 
 const project: Project = {
   id: "project-1",
@@ -59,6 +59,20 @@ const existingShot: Shot = {
   updated_at: "2026-06-15T00:00:00Z",
 };
 
+const workflowTemplate: WorkflowTemplate = {
+  id: "template-1",
+  name: "Skill default LTX lip-sync",
+  json_path:
+    "/Users/songhaban/.codex/skills/comfy-ltx-lipsync-runner/assets/workflows/default_ltx2_ia2v_lipsync.json",
+  file_hash: null,
+  version: "skill-default",
+  compatibility_notes: "Bundled by skill",
+  is_available: true,
+  validation_error: null,
+  created_at: "2026-06-15T00:00:00Z",
+  updated_at: "2026-06-15T00:00:00Z",
+};
+
 let jobs: Job[] = [];
 let shots: Shot[] = [];
 
@@ -93,6 +107,31 @@ beforeEach(() => {
     }
     if (url === "/api/jobs") {
       return Promise.resolve(jsonResponse(jobs));
+    }
+    if (url === "/api/workflows/templates") {
+      return Promise.resolve(jsonResponse([workflowTemplate]));
+    }
+    if (url === "/api/workflows/skill-defaults/ltx-lipsync" && init?.method === "POST") {
+      return Promise.resolve(
+        jsonResponse(
+          {
+            template: workflowTemplate,
+            mode: {
+              id: "mode-1",
+              workflow_template_id: "template-1",
+              name: "Skill LTX image audio prompt",
+              required_inputs: '["image", "audio", "start_time", "duration", "prompt_en"]',
+              optional_inputs: '["seed", "output_prefix"]',
+              node_bindings: "{}",
+              validation_rules: "{}",
+              exposed_params: "{}",
+              created_at: "2026-06-15T00:00:00Z",
+              updated_at: "2026-06-15T00:00:00Z",
+            },
+          },
+          { status: 201 },
+        ),
+      );
     }
     if (url === "/api/shots?project_id=project-1") {
       return Promise.resolve(jsonResponse(shots));
@@ -146,6 +185,8 @@ describe("App workspace flow", () => {
     expect(await screen.findByRole("heading", { name: "Persisted Project" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Run alignment" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add manual shot" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Workflow Library" })).toBeInTheDocument();
+    expect(screen.getByText("Skill default LTX lip-sync")).toBeInTheDocument();
     expect(screen.getByText("Use alignment for a lyric-based pass, or add a manual shot when you want to block scenes yourself.")).toBeInTheDocument();
 
     const pendingJob = await screen.findByLabelText("Pending job: align project-1");
