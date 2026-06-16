@@ -13,7 +13,31 @@ const BASE_URL = "/api";
 
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    let message = `HTTP ${response.status}: ${response.statusText}`;
+    try {
+      const errorBody = (await response.json()) as { detail?: unknown };
+      if (typeof errorBody.detail === "string") {
+        message = errorBody.detail;
+      } else if (Array.isArray(errorBody.detail)) {
+        message = errorBody.detail
+          .map((item) => {
+            if (typeof item === "string") return item;
+            if (
+              item &&
+              typeof item === "object" &&
+              "msg" in item &&
+              typeof item.msg === "string"
+            ) {
+              return item.msg;
+            }
+            return JSON.stringify(item);
+          })
+          .join("; ");
+      }
+    } catch {
+      // Keep the HTTP status fallback when the response is not JSON.
+    }
+    throw new Error(message);
   }
   return response.json() as Promise<T>;
 }
