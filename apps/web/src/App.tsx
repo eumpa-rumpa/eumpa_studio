@@ -102,6 +102,7 @@ export function App() {
       <ShotDrawer
         shot={selectedShot}
         projectId={selectedProject.id}
+        projectAudioAvailable={Boolean(selectedProject.audio_relative_path)}
         onClose={() => setSelectedShot(null)}
         onShotUpdated={() => setShotListVersion((version) => version + 1)}
       />

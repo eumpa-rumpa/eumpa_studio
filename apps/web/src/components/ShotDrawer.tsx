@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
   enqueueRender,
@@ -16,6 +16,7 @@ import { VideoPreviewModal } from "./VideoPreviewModal";
 interface ShotDrawerProps {
   shot: Shot | null;
   projectId: string;
+  projectAudioAvailable?: boolean;
   onClose: () => void;
   onShotUpdated: () => void;
 }
@@ -77,7 +78,66 @@ async function postReview(
   }
 }
 
-export function ShotDrawer({ shot, projectId, onClose, onShotUpdated }: ShotDrawerProps) {
+interface ShotAudioPreviewProps {
+  projectId: string;
+  startTime: number;
+  endTime: number;
+  audioAvailable: boolean;
+}
+
+function ShotAudioPreview({
+  projectId,
+  startTime,
+  endTime,
+  audioAvailable,
+}: ShotAudioPreviewProps) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const formattedRange = `${formatSeconds(startTime)}-${formatSeconds(endTime)}s`;
+  const audioUrl = `/api/projects/${encodeURIComponent(projectId)}/audio#t=${formatSeconds(startTime)},${formatSeconds(endTime)}`;
+
+  function seekToSegmentStart() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.currentTime < startTime || audio.currentTime >= endTime) {
+      audio.currentTime = startTime;
+    }
+  }
+
+  function stopAtSegmentEnd() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.currentTime >= endTime) {
+      audio.pause();
+      audio.currentTime = startTime;
+    }
+  }
+
+  if (!audioAvailable) {
+    return <p className="shot-drawer__muted">No project audio attached.</p>;
+  }
+
+  return (
+    <audio
+      ref={audioRef}
+      className="shot-drawer__audio"
+      aria-label={`Audio preview for ${formattedRange}`}
+      controls
+      preload="metadata"
+      src={audioUrl}
+      onLoadedMetadata={seekToSegmentStart}
+      onPlay={seekToSegmentStart}
+      onTimeUpdate={stopAtSegmentEnd}
+    />
+  );
+}
+
+export function ShotDrawer({
+  shot,
+  projectId,
+  projectAudioAvailable = true,
+  onClose,
+  onShotUpdated,
+}: ShotDrawerProps) {
   const [currentShot, setCurrentShot] = useState<Shot | null>(shot);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -475,6 +535,18 @@ export function ShotDrawer({ shot, projectId, onClose, onShotUpdated }: ShotDraw
           </button>
         </section>
 
+        <section className="shot-drawer__section" aria-labelledby="audio-preview-heading">
+          <h3 id="audio-preview-heading" className="shot-drawer__section-title">
+            Audio Preview
+          </h3>
+          <ShotAudioPreview
+            projectId={projectId}
+            startTime={currentShot.start_time}
+            endTime={currentShot.end_time}
+            audioAvailable={projectAudioAvailable}
+          />
+        </section>
+
         <section className="shot-drawer__section" aria-labelledby="lyrics-heading">
           <h3 id="lyrics-heading" className="shot-drawer__section-title">
             Full Lyrics
@@ -536,36 +608,6 @@ export function ShotDrawer({ shot, projectId, onClose, onShotUpdated }: ShotDraw
             shotId={currentShot.id}
             onAttemptCreated={activateCreatedAttempt}
           />
-        </section>
-
-        <section className="shot-drawer__section" aria-labelledby="active-attempt-heading">
-          <h3 id="active-attempt-heading" className="shot-drawer__section-title">
-            Active Attempt
-          </h3>
-          {activeAttempt ? (
-            <div className="shot-drawer__prompt-grid">
-              <label className="shot-drawer__field">
-                <span>Prompt KO</span>
-                <textarea
-                  className="shot-drawer__textarea"
-                  value={activeAttempt.prompt_ko ?? ""}
-                  readOnly
-                  rows={6}
-                />
-              </label>
-              <label className="shot-drawer__field">
-                <span>Prompt EN</span>
-                <textarea
-                  className="shot-drawer__textarea"
-                  value={activeAttempt.prompt_en ?? ""}
-                  readOnly
-                  rows={6}
-                />
-              </label>
-            </div>
-          ) : (
-            <p className="shot-drawer__muted">No active attempt selected.</p>
-          )}
         </section>
 
         {/* Prompt Generation Section (EPR-15) */}

@@ -64,6 +64,8 @@ const configuredAttempt: Attempt = {
   ...attempt,
   workflow_template_id: "template-1",
   execution_mode_id: "mode-1",
+  prompt_ko: "한국어 프롬프트",
+  prompt_en: "English prompt",
 };
 
 const template: WorkflowTemplate = {
@@ -174,7 +176,7 @@ afterEach(() => {
 });
 
 describe("ShotDrawer asset attempts", () => {
-  test("lets the user create and activate an attempt from a project asset", async () => {
+  test("separates reference image selection from explicit attempt creation", async () => {
     const user = userEvent.setup();
     const onShotUpdated = vi.fn();
 
@@ -188,9 +190,22 @@ describe("ShotDrawer asset attempts", () => {
     );
 
     expect(await screen.findByText("No attempts yet.")).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "Use asset reference.png" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Select asset reference.png" }),
+    ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Use asset reference.png" }));
+    await user.click(screen.getByRole("button", { name: "Select asset reference.png" }));
+
+    expect(screen.getByText("No attempts yet.")).toBeInTheDocument();
+    expect(onShotUpdated).not.toHaveBeenCalled();
+    expect(window.fetch).not.toHaveBeenCalledWith(
+      "/api/assets/project-1/asset-1/use-for-shot/shot-1",
+      expect.anything(),
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: "Create attempt from reference.png" }),
+    );
 
     expect(await screen.findByText("No prompt")).toBeInTheDocument();
     await waitFor(() => {
@@ -212,6 +227,70 @@ describe("ShotDrawer asset attempts", () => {
     await user.click(await screen.findByRole("button", { name: "Queue Render" }));
 
     expect(await screen.findByText("Render job queued")).toBeInTheDocument();
+  });
+
+  test("shows one editable prompt surface for the active attempt", async () => {
+    vi.mocked(window.fetch).mockImplementation((input) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      if (url === "/api/shots/shot-1/attempts") {
+        return Promise.resolve(jsonResponse([configuredAttempt]));
+      }
+      if (url === "/api/assets/project-1") {
+        return Promise.resolve(jsonResponse([asset]));
+      }
+      if (url === "/api/workflows/templates") {
+        return Promise.resolve(jsonResponse([template]));
+      }
+      if (url === "/api/workflows/templates/template-1/modes") {
+        return Promise.resolve(jsonResponse([mode]));
+      }
+
+      return Promise.reject(new Error(`Unhandled request: ${url}`));
+    });
+
+    render(
+      <ShotDrawer
+        shot={{
+          ...shot,
+          active_attempt_id: "attempt-1",
+          active_attempt: configuredAttempt,
+          attempt_count: 1,
+        }}
+        projectId="project-1"
+        onClose={() => {}}
+        onShotUpdated={() => {}}
+      />,
+    );
+
+    expect(await screen.findByRole("textbox", { name: "Korean prompt" })).toHaveValue(
+      "한국어 프롬프트",
+    );
+    expect(screen.getByRole("textbox", { name: "English prompt" })).toHaveValue(
+      "English prompt",
+    );
+    expect(screen.queryByRole("textbox", { name: "Prompt KO" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Prompt EN" })).not.toBeInTheDocument();
+  });
+
+  test("shows a shot audio segment preview", async () => {
+    render(
+      <ShotDrawer
+        shot={shot}
+        projectId="project-1"
+        onClose={() => {}}
+        onShotUpdated={() => {}}
+      />,
+    );
+
+    const audio = await screen.findByLabelText("Audio preview for 0-5s");
+
+    expect(audio).toHaveAttribute("src", "/api/projects/project-1/audio#t=0,5");
   });
 
   test("shows API detail when render queue validation fails", async () => {
@@ -270,7 +349,7 @@ describe("ShotDrawer asset attempts", () => {
       />,
     );
 
-    await user.click(await screen.findByText("No prompt"));
+    await user.click(await screen.findByText("한국어 프롬프트"));
     await user.click(await screen.findByRole("button", { name: "Queue Render" }));
 
     expect(
