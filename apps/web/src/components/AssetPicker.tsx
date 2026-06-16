@@ -5,6 +5,7 @@ interface AssetPickerProps {
   projectId: string;
   shotId: string | null;
   onAssetSelected?: (asset: Asset) => void;
+  onAttemptCreated?: (attempt: Attempt) => void;
 }
 
 async function fetchAssets(projectId: string): Promise<Asset[]> {
@@ -47,6 +48,7 @@ export function AssetPicker({
   projectId,
   shotId,
   onAssetSelected,
+  onAttemptCreated,
 }: AssetPickerProps) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,7 +101,8 @@ export function AssetPicker({
     setActionError(null);
     if (shotId) {
       try {
-        await useAssetForShot(projectId, asset.id, shotId);
+        const attempt = await useAssetForShot(projectId, asset.id, shotId);
+        onAttemptCreated?.(attempt);
       } catch (err: unknown) {
         setActionError(
           err instanceof Error ? err.message : "Failed to assign asset to shot",
@@ -152,6 +155,7 @@ export function AssetPicker({
                 className="asset-picker__thumb-btn"
                 onClick={() => { void handleAssetClick(asset); }}
                 title={asset.name}
+                aria-label={`Use asset ${asset.name}`}
               >
                 <img
                   src={asset.thumb_url}

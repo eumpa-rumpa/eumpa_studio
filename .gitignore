@@ -9,6 +9,7 @@ dist/
 
 # Database
 *.db
+data/
 
 # Frontend
 apps/web/node_modules/

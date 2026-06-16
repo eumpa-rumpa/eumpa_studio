@@ -97,16 +97,22 @@ def run_codex_prompt(
 ) -> PromptResult:
     """Run Codex CLI and parse its JSON prompt-generation response."""
     prompt_text = build_prompt_text(ctx)
-    args = (
-        [codex_cli_path, "--image", ctx.image_path, prompt_text]
-        if ctx.image_path
-        else [codex_cli_path, prompt_text]
-    )
+    args = [
+        codex_cli_path,
+        "exec",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "read-only",
+    ]
+    if ctx.image_path:
+        args.extend(["--image", ctx.image_path])
 
     try:
         completed = subprocess.run(
             args,
             capture_output=True,
+            input=prompt_text,
             text=True,
             timeout=timeout,
         )
