@@ -38,9 +38,15 @@ export function QueuePanel({ refreshKey = 0 }: QueuePanelProps) {
         ) : (
           <ul className="queue-panel__list">
             {pending.map((job) => (
-              <li key={job.id} className="queue-panel__item">
-                <span>{job.type}</span>
-                <code>{job.target_entity_id ?? job.target_entity_type ?? "untargeted"}</code>
+              <li
+                key={job.id}
+                className="queue-panel__item"
+                aria-label={`Pending job: ${describeJob(job)}`}
+              >
+                <span className="queue-panel__item-type">{job.type}</span>
+                <code className="queue-panel__item-target">
+                  {job.target_entity_id ?? job.target_entity_type ?? "untargeted"}
+                </code>
               </li>
             ))}
           </ul>
