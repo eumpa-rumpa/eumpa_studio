@@ -114,6 +114,21 @@ export function ShotDrawer({ shot, projectId, onClose, onShotUpdated }: ShotDraw
     if (!currentShot?.active_attempt_id) return null;
     return attempts.find((attempt) => attempt.id === currentShot.active_attempt_id) ?? null;
   }, [attempts, currentShot?.active_attempt_id]);
+  const hasVideoOutput = Boolean(activeAttempt?.output_metadata);
+
+  const activeWorkflowTemplate = useMemo(
+    () =>
+      workflowTemplates.find(
+        (template) => template.id === activeAttempt?.workflow_template_id,
+      ) ?? null,
+    [activeAttempt?.workflow_template_id, workflowTemplates],
+  );
+
+  const selectedWorkflowTemplate = useMemo(
+    () =>
+      workflowTemplates.find((template) => template.id === selectedTemplateId) ?? null,
+    [selectedTemplateId, workflowTemplates],
+  );
 
   useEffect(() => {
     setCurrentShot(shot);
@@ -628,7 +643,8 @@ export function ShotDrawer({ shot, projectId, onClose, onShotUpdated }: ShotDraw
                 renderSaving ||
                 !activeAttempt ||
                 !activeAttempt.workflow_template_id ||
-                !activeAttempt.execution_mode_id
+                !activeAttempt.execution_mode_id ||
+                activeWorkflowTemplate?.is_available === false
               }
               onClick={() => { void handleQueueRender(); }}
             >
@@ -655,11 +671,21 @@ export function ShotDrawer({ shot, projectId, onClose, onShotUpdated }: ShotDraw
                   <option value="">Select workflow</option>
                   {workflowTemplates.map((template) => (
                     <option key={template.id} value={template.id}>
-                      {template.name}
+                      {template.is_available ? template.name : `${template.name} (missing)`}
                     </option>
                   ))}
                 </select>
               </label>
+
+              {selectedWorkflowTemplate?.validation_error ? (
+                <p className="shot-drawer__error" role="alert">
+                  {selectedWorkflowTemplate.validation_error}
+                </p>
+              ) : selectedWorkflowTemplate ? (
+                <p className="shot-drawer__muted">
+                  Workflow ready: {selectedWorkflowTemplate.json_path}
+                </p>
+              ) : null}
 
               <label className="shot-drawer__field" htmlFor="execution-mode">
                 <span>Execution Mode</span>
@@ -740,7 +766,7 @@ export function ShotDrawer({ shot, projectId, onClose, onShotUpdated }: ShotDraw
             <button
               className="shot-drawer__btn shot-drawer__btn--play"
               type="button"
-              disabled={!activeAttempt}
+              disabled={!hasVideoOutput}
               onClick={() => void handlePlayVideo()}
             >
               Play Video

@@ -20,7 +20,7 @@ app_cli = typer.Typer(no_args_is_help=True)
 
 def get_settings() -> Settings:
     """Read local runtime settings from environment variables."""
-    data_root = Path(os.environ.get("EUMPA_DATA_ROOT", ".eumpa")).expanduser()
+    data_root = Path(os.environ.get("EUMPA_DATA_ROOT", "data")).expanduser()
     return Settings(
         data_root=data_root,
         output_path=data_root / "outputs",

@@ -6,6 +6,7 @@ import { ProjectChooser } from "./components/ProjectChooser";
 import { QueuePanel } from "./components/QueuePanel";
 import { ShotDrawer } from "./components/ShotDrawer";
 import { ShotTable } from "./components/ShotTable";
+import { WorkflowLibrary } from "./components/WorkflowLibrary";
 
 export function App() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -93,7 +94,10 @@ export function App() {
             onJobsUpdated={() => setQueueRefreshKey((key) => key + 1)}
           />
         </section>
-        <QueuePanel refreshKey={queueRefreshKey} />
+        <aside className="project-workspace__side" aria-label="Project operations">
+          <WorkflowLibrary refreshKey={shotListVersion} />
+          <QueuePanel refreshKey={queueRefreshKey} />
+        </aside>
       </div>
       <ShotDrawer
         shot={selectedShot}

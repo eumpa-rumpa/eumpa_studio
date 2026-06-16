@@ -87,6 +87,15 @@ export async function fetchWorkflowTemplates(): Promise<WorkflowTemplate[]> {
   return get<WorkflowTemplate[]>("/workflows/templates");
 }
 
+export interface SkillWorkflowBootstrap {
+  template: WorkflowTemplate;
+  mode: ExecutionMode;
+}
+
+export async function bootstrapLtxLipSyncWorkflow(): Promise<SkillWorkflowBootstrap> {
+  return postJson<SkillWorkflowBootstrap>("/workflows/skill-defaults/ltx-lipsync", {});
+}
+
 export async function fetchExecutionModes(templateId: string): Promise<ExecutionMode[]> {
   return get<ExecutionMode[]>(
     `/workflows/templates/${encodeURIComponent(templateId)}/modes`,
