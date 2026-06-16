@@ -56,6 +56,7 @@ export function AssetPicker({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -97,7 +98,12 @@ export function AssetPicker({
     }
   }
 
-  async function handleAssetClick(asset: Asset) {
+  function handleAssetClick(asset: Asset) {
+    setSelectedAsset(asset);
+    onAssetSelected?.(asset);
+  }
+
+  async function handleCreateAttempt(asset: Asset) {
     setActionError(null);
     if (shotId) {
       try {
@@ -110,7 +116,6 @@ export function AssetPicker({
         return;
       }
     }
-    onAssetSelected?.(asset);
   }
 
   return (
@@ -152,10 +157,14 @@ export function AssetPicker({
             <li key={asset.id} className="asset-picker__item">
               <button
                 type="button"
-                className="asset-picker__thumb-btn"
-                onClick={() => { void handleAssetClick(asset); }}
+                className={
+                  selectedAsset?.id === asset.id
+                    ? "asset-picker__thumb-btn asset-picker__thumb-btn--selected"
+                    : "asset-picker__thumb-btn"
+                }
+                onClick={() => handleAssetClick(asset)}
                 title={asset.name}
-                aria-label={`Use asset ${asset.name}`}
+                aria-label={`Select asset ${asset.name}`}
               >
                 <img
                   src={asset.thumb_url}
@@ -164,6 +173,17 @@ export function AssetPicker({
                 />
                 <span className="asset-picker__label">{asset.name}</span>
               </button>
+              {selectedAsset?.id === asset.id && shotId ? (
+                <button
+                  type="button"
+                  className="asset-picker__create-btn"
+                  onClick={() => {
+                    void handleCreateAttempt(asset);
+                  }}
+                >
+                  Create attempt from {asset.name}
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>

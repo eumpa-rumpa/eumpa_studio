@@ -4,21 +4,25 @@ from __future__ import annotations
 
 import datetime
 import json
+import shutil
 from pathlib import Path
 from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from eumpa_studio.config import Settings
 from eumpa_studio.db.session import get_session
 from eumpa_studio.domain.models import ExecutionMode, WorkflowTemplate
 from eumpa_studio.execution.workflow_patch import ValidationError, apply_mode
+from eumpa_studio.server.deps import get_settings_dep
 
 router = APIRouter()
 
 DbSession = Annotated[Session, Depends(get_session)]
+AppSettings = Annotated[Settings, Depends(get_settings_dep)]
 
 SKILL_LTX_WORKFLOW_PATH = (
     "/Users/songhaban/.codex/skills/comfy-ltx-lipsync-runner/assets/workflows/"
@@ -33,6 +37,11 @@ SKILL_LTX_NODE_BINDINGS = {
     "seed": {"node_id": "1", "field": "noise_seed"},
     "output_prefix": {"node_id": "7", "field": "filename_prefix"},
 }
+SKILL_LTX_TEMPLATE_NAME = "Skill default LTX lip-sync"
+SKILL_LTX_MODE_NAME = "Skill LTX image audio prompt"
+SKILL_LTX_COPY_RELATIVE_PATH = Path(
+    "workflows/skill-defaults/default_ltx2_ia2v_lipsync.json"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +143,18 @@ def _read_workflow_template(template: WorkflowTemplate) -> WorkflowTemplateRead:
     )
 
 
+def _copy_skill_ltx_workflow(settings: Settings) -> str:
+    source_path = Path(SKILL_LTX_WORKFLOW_PATH)
+    validation_error = _workflow_template_validation_error(str(source_path))
+    if validation_error is not None:
+        raise HTTPException(status_code=422, detail=validation_error)
+
+    target_path = settings.data_root / SKILL_LTX_COPY_RELATIVE_PATH
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source_path, target_path)
+    return str(target_path)
+
+
 # ---------------------------------------------------------------------------
 # WorkflowTemplate routes
 # ---------------------------------------------------------------------------
@@ -185,35 +206,50 @@ def get_workflow_template(template_id: str, db: DbSession) -> WorkflowTemplateRe
     response_model=SkillWorkflowBootstrapRead,
     status_code=201,
 )
-def bootstrap_ltx_lipsync_workflow(db: DbSession) -> SkillWorkflowBootstrapRead:
-    """Register the bundled ComfyUI/LTX lip-sync skill workflow and mode."""
-    validation_error = _workflow_template_validation_error(SKILL_LTX_WORKFLOW_PATH)
-    if validation_error is not None:
-        raise HTTPException(status_code=422, detail=validation_error)
+def bootstrap_ltx_lipsync_workflow(
+    db: DbSession,
+    settings: AppSettings,
+) -> SkillWorkflowBootstrapRead:
+    """Copy and register the bundled ComfyUI/LTX lip-sync skill workflow and mode."""
+    copied_workflow_path = _copy_skill_ltx_workflow(settings)
 
     template = db.scalars(
-        select(WorkflowTemplate).where(WorkflowTemplate.json_path == SKILL_LTX_WORKFLOW_PATH)
+        select(WorkflowTemplate)
+        .where(
+            or_(
+                WorkflowTemplate.name == SKILL_LTX_TEMPLATE_NAME,
+                WorkflowTemplate.json_path == copied_workflow_path,
+                WorkflowTemplate.json_path == SKILL_LTX_WORKFLOW_PATH,
+            )
+        )
+        .order_by(WorkflowTemplate.created_at, WorkflowTemplate.id)
     ).first()
     if template is None:
         template = WorkflowTemplate(
-            name="Skill default LTX lip-sync",
-            json_path=SKILL_LTX_WORKFLOW_PATH,
+            name=SKILL_LTX_TEMPLATE_NAME,
+            json_path=copied_workflow_path,
             version="skill-default",
-            compatibility_notes="Bundled by comfy-ltx-lipsync-runner skill.",
+            compatibility_notes="Copied from comfy-ltx-lipsync-runner skill.",
         )
         db.add(template)
+        db.commit()
+        db.refresh(template)
+    elif template.json_path != copied_workflow_path:
+        template.json_path = copied_workflow_path
+        template.version = "skill-default"
+        template.compatibility_notes = "Copied from comfy-ltx-lipsync-runner skill."
         db.commit()
         db.refresh(template)
 
     mode = db.scalars(
         select(ExecutionMode)
         .where(ExecutionMode.workflow_template_id == template.id)
-        .where(ExecutionMode.name == "Skill LTX image audio prompt")
+        .where(ExecutionMode.name == SKILL_LTX_MODE_NAME)
     ).first()
     if mode is None:
         mode = ExecutionMode(
             workflow_template_id=template.id,
-            name="Skill LTX image audio prompt",
+            name=SKILL_LTX_MODE_NAME,
             required_inputs=json.dumps(
                 ["image", "audio", "start_time", "duration", "prompt_en"]
             ),

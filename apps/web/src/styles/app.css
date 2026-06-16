@@ -947,6 +947,24 @@ button:disabled {
   cursor: pointer;
 }
 
+.asset-picker__thumb-btn--selected {
+  border-color: var(--accent);
+  background: #151715;
+}
+
+.asset-picker__create-btn {
+  width: 100%;
+  margin-top: 0.45rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
 .asset-picker__thumb {
   width: 100%;
   aspect-ratio: 1;
@@ -962,6 +980,10 @@ button:disabled {
   font-size: 0.78rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.shot-drawer__audio {
+  width: 100%;
 }
 
 .video-modal__overlay {

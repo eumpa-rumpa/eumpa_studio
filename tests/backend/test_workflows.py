@@ -8,13 +8,23 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from eumpa_studio.config import Settings
 from eumpa_studio.db.base import Base
 from eumpa_studio.db.session import get_session
 from eumpa_studio.server.app import app
+from eumpa_studio.server.deps import get_settings_dep
 
 
 @pytest.fixture()
-def session_factory():
+def test_settings(tmp_path):
+    return Settings(
+        data_root=tmp_path / "data",
+        database_url="sqlite:///:memory:",
+    )
+
+
+@pytest.fixture()
+def session_factory(test_settings):
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -27,12 +37,16 @@ def session_factory():
 
 
 @pytest.fixture()
-def api_client(session_factory):
+def api_client(session_factory, test_settings):
     def override_get_session():
         with session_factory() as session:
             yield session
 
+    def override_get_settings():
+        return test_settings
+
     app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[get_settings_dep] = override_get_settings
     with TestClient(app) as client:
         yield client
     app.dependency_overrides.clear()
@@ -78,7 +92,10 @@ def test_create_workflow_template_rejects_missing_file(api_client: TestClient):
     assert "Workflow template file not found" in template_response.json()["detail"]
 
 
-def test_bootstrap_ltx_lipsync_skill_workflow_is_idempotent(api_client: TestClient):
+def test_bootstrap_ltx_lipsync_skill_workflow_is_idempotent(
+    api_client: TestClient,
+    test_settings,
+):
     first_response = api_client.post("/api/workflows/skill-defaults/ltx-lipsync")
     second_response = api_client.post("/api/workflows/skill-defaults/ltx-lipsync")
 
@@ -89,7 +106,11 @@ def test_bootstrap_ltx_lipsync_skill_workflow_is_idempotent(api_client: TestClie
     assert first["template"]["id"] == second["template"]["id"]
     assert first["mode"]["id"] == second["mode"]["id"]
     assert first["template"]["is_available"] is True
+    assert first["template"]["json_path"] == second["template"]["json_path"]
+    assert str(test_settings.data_root) in first["template"]["json_path"]
+    assert ".codex/skills" not in first["template"]["json_path"]
     assert first["mode"]["required_inputs"] == (
         '["image", "audio", "start_time", "duration", "prompt_en"]'
     )
     assert '"node_id": "14"' in first["mode"]["node_bindings"]
+    assert (test_settings.data_root / "workflows" / "skill-defaults" / "default_ltx2_ia2v_lipsync.json").is_file()

@@ -92,6 +92,36 @@ def test_create_project_with_audio(api_client: TestClient, test_settings):
     assert saved_path.read_bytes() == audio_content
 
 
+def test_get_project_audio_serves_uploaded_audio(api_client: TestClient):
+    """GET /api/projects/{id}/audio should serve the stored project audio file."""
+    audio_content = b"fake audio data"
+    create_response = api_client.post(
+        "/api/projects",
+        data={"name": "Audio Preview Project"},
+        files={"audio": ("track.mp3", io.BytesIO(audio_content), "audio/mpeg")},
+    )
+    assert create_response.status_code == 201
+    project_id = create_response.json()["id"]
+
+    response = api_client.get(f"/api/projects/{project_id}/audio")
+
+    assert response.status_code == 200
+    assert response.content == audio_content
+    assert response.headers["content-type"].startswith("audio/")
+
+
+def test_get_project_audio_without_audio_returns_404(api_client: TestClient):
+    """GET /api/projects/{id}/audio should be explicit when a project has no audio."""
+    create_response = api_client.post("/api/projects", data={"name": "Silent Project"})
+    assert create_response.status_code == 201
+    project_id = create_response.json()["id"]
+
+    response = api_client.get(f"/api/projects/{project_id}/audio")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project audio not found"
+
+
 def test_list_projects(api_client: TestClient):
     """GET /api/projects should return all created projects."""
     api_client.post("/api/projects", data={"name": "Project Alpha"})

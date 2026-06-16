@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import datetime
+import mimetypes
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -99,3 +101,20 @@ def get_project(project_id: str, db: DbSession) -> Project:
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
+
+
+@router.get("/projects/{project_id}/audio")
+def get_project_audio(project_id: str, db: DbSession, settings: AppSettings) -> FileResponse:
+    """Serve the source audio file for a project."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not project.audio_relative_path:
+        raise HTTPException(status_code=404, detail="Project audio not found")
+
+    audio_path = settings.data_root / project.audio_relative_path
+    if not audio_path.is_file():
+        raise HTTPException(status_code=404, detail="Project audio not found")
+
+    media_type = mimetypes.guess_type(audio_path.name)[0] or "application/octet-stream"
+    return FileResponse(str(audio_path), media_type=media_type)
