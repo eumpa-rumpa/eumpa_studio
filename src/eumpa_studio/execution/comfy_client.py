@@ -110,10 +110,21 @@ def _load_render_config(
 
 
 def _load_workflow_json(template: WorkflowTemplate) -> str:
-    if os.path.exists(template.json_path):
-        with open(template.json_path, encoding="utf-8") as workflow_file:
-            return workflow_file.read()
-    return "{}"
+    if not os.path.exists(template.json_path):
+        raise FileNotFoundError(f"Workflow template file not found: {template.json_path}")
+
+    with open(template.json_path, encoding="utf-8") as workflow_file:
+        workflow_json = workflow_file.read()
+
+    try:
+        workflow = json.loads(workflow_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Workflow template JSON is invalid: {template.json_path}") from exc
+
+    if not isinstance(workflow, dict) or not workflow:
+        raise ValueError("Workflow template JSON must be a non-empty object")
+
+    return workflow_json
 
 
 def _build_inputs(attempt: Attempt) -> dict[str, Any]:

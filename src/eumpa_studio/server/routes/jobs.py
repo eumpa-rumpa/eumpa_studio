@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import datetime
+import json
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from eumpa_studio.db.session import get_session
-from eumpa_studio.domain.models import Attempt, Job
+from eumpa_studio.domain.models import Attempt, ExecutionMode, Job, WorkflowTemplate
 from eumpa_studio.domain.statuses import JobStatus
 
 router = APIRouter()
@@ -63,6 +65,49 @@ def _create_job(db: Session, job_type: str, target_entity_type: str | None, targ
     return job
 
 
+def _validate_render_attempt_config(db: Session, attempt: Attempt) -> None:
+    """Reject render jobs that are guaranteed to fail before they reach ComfyUI."""
+    if not attempt.workflow_template_id or not attempt.execution_mode_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Select a workflow template and execution mode before rendering",
+        )
+
+    template = db.get(WorkflowTemplate, attempt.workflow_template_id)
+    if template is None:
+        raise HTTPException(status_code=422, detail="Selected workflow template was not found")
+
+    mode = db.get(ExecutionMode, attempt.execution_mode_id)
+    if mode is None:
+        raise HTTPException(status_code=422, detail="Selected execution mode was not found")
+    if mode.workflow_template_id != template.id:
+        raise HTTPException(
+            status_code=422,
+            detail="Selected execution mode does not belong to the selected workflow template",
+        )
+
+    workflow_path = Path(template.json_path)
+    if not workflow_path.is_file():
+        raise HTTPException(
+            status_code=422,
+            detail=f"Workflow template file not found: {template.json_path}",
+        )
+
+    try:
+        workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Workflow template JSON is invalid: {template.json_path}",
+        ) from exc
+
+    if not isinstance(workflow, dict) or not workflow:
+        raise HTTPException(
+            status_code=422,
+            detail="Workflow template JSON must be a non-empty object",
+        )
+
+
 @router.post("/jobs", response_model=JobRead, status_code=201)
 def enqueue_job(body: JobCreate, db: DbSession) -> Job:
     if body.type not in KNOWN_JOB_TYPES:
@@ -105,9 +150,5 @@ def enqueue_render_job(shot_id: str, attempt_id: str, db: DbSession) -> Job:
     attempt = db.get(Attempt, attempt_id)
     if attempt is None or attempt.shot_id != shot_id:
         raise HTTPException(status_code=404, detail="Attempt not found")
-    if not attempt.workflow_template_id or not attempt.execution_mode_id:
-        raise HTTPException(
-            status_code=422,
-            detail="Select a workflow template and execution mode before rendering",
-        )
+    _validate_render_attempt_config(db, attempt)
     return _create_job(db, "render", "attempt", attempt_id)

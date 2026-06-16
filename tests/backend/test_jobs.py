@@ -240,7 +240,11 @@ def test_render_attempt_endpoint_requires_workflow_configuration(
 def test_render_attempt_endpoint_enqueues_configured_attempt(
     api_client: TestClient,
     session_factory,
+    tmp_path,
 ):
+    workflow_path = tmp_path / "workflow.json"
+    workflow_path.write_text('{"1": {"class_type": "TestNode", "inputs": {}}}', encoding="utf-8")
+
     with session_factory() as session:
         project = Project(name="Configured Render Project")
         session.add(project)
@@ -252,7 +256,7 @@ def test_render_attempt_endpoint_enqueues_configured_attempt(
             end_time=5,
             duration=5,
         )
-        template = WorkflowTemplate(name="LTX", json_path="workflow.json")
+        template = WorkflowTemplate(name="LTX", json_path=str(workflow_path))
         session.add_all([shot, template])
         session.commit()
         mode = ExecutionMode(
@@ -281,3 +285,48 @@ def test_render_attempt_endpoint_enqueues_configured_attempt(
     assert body["target_entity_type"] == "attempt"
     assert body["target_entity_id"] == attempt_id
     assert body["status"] == JobStatus.PENDING.value
+
+
+def test_render_attempt_endpoint_rejects_missing_workflow_file(
+    api_client: TestClient,
+    session_factory,
+    tmp_path,
+):
+    missing_workflow_path = tmp_path / "missing-workflow.json"
+
+    with session_factory() as session:
+        project = Project(name="Broken Render Project")
+        session.add(project)
+        session.commit()
+        shot = Shot(
+            project_id=project.id,
+            order=0,
+            start_time=0,
+            end_time=5,
+            duration=5,
+        )
+        template = WorkflowTemplate(name="Missing LTX", json_path=str(missing_workflow_path))
+        session.add_all([shot, template])
+        session.commit()
+        mode = ExecutionMode(
+            workflow_template_id=template.id,
+            name="Image to video",
+            required_inputs='["image", "prompt_en"]',
+            node_bindings="{}",
+        )
+        session.add(mode)
+        session.commit()
+        attempt = Attempt(
+            shot_id=shot.id,
+            workflow_template_id=template.id,
+            execution_mode_id=mode.id,
+        )
+        session.add(attempt)
+        session.commit()
+        shot_id = shot.id
+        attempt_id = attempt.id
+
+    response = api_client.post(f"/api/shots/{shot_id}/attempts/{attempt_id}/render")
+
+    assert response.status_code == 422
+    assert "Workflow template file not found" in response.json()["detail"]

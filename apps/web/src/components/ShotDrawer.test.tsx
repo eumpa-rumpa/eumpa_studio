@@ -211,4 +211,68 @@ describe("ShotDrawer asset attempts", () => {
 
     expect(await screen.findByText("Render job queued")).toBeInTheDocument();
   });
+
+  test("shows API detail when render queue validation fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(window.fetch).mockImplementation((input, init) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      if (url === "/api/shots/shot-1/attempts") {
+        return Promise.resolve(jsonResponse([configuredAttempt]));
+      }
+      if (url === "/api/assets/project-1") {
+        return Promise.resolve(jsonResponse([]));
+      }
+      if (url === "/api/workflows/templates") {
+        return Promise.resolve(jsonResponse([template]));
+      }
+      if (url === "/api/workflows/templates/template-1/modes") {
+        return Promise.resolve(jsonResponse([mode]));
+      }
+      if (url === "/api/shots/shot-1" && init?.method === "PATCH") {
+        return Promise.resolve(
+          jsonResponse({
+            ...shot,
+            active_attempt_id: "attempt-1",
+            active_attempt: configuredAttempt,
+            attempt_count: 1,
+          }),
+        );
+      }
+      if (
+        url === "/api/shots/shot-1/attempts/attempt-1/render" &&
+        init?.method === "POST"
+      ) {
+        return Promise.resolve(
+          jsonResponse(
+            { detail: "Workflow template file not found: /tmp/missing.json" },
+            { status: 422, statusText: "Unprocessable Entity" },
+          ),
+        );
+      }
+
+      return Promise.reject(new Error(`Unhandled request: ${url}`));
+    });
+
+    render(
+      <ShotDrawer
+        shot={shot}
+        projectId="project-1"
+        onClose={() => {}}
+        onShotUpdated={() => {}}
+      />,
+    );
+
+    await user.click(await screen.findByText("No prompt"));
+    await user.click(await screen.findByRole("button", { name: "Queue Render" }));
+
+    expect(
+      await screen.findByText("Workflow template file not found: /tmp/missing.json"),
+    ).toBeInTheDocument();
+  });
 });
