@@ -4,7 +4,6 @@ import {
   fetchShotAttempts,
   generatePrompt as generatePromptRequest,
   savePrompt as savePromptRequest,
-  updateAttemptReviewNote,
   updateShot,
 } from "../api/client";
 import type { Attempt, Shot } from "../api/types";
@@ -205,28 +204,6 @@ export function ShotDrawer({ shot, projectId, onClose, onShotUpdated }: ShotDraw
     if (!currentShot) return;
     if (attemptId === currentShot.active_attempt_id) return;
     void saveShotFields({ active_attempt_id: attemptId }, `attempt-${attemptId}`);
-  }
-
-  async function saveReviewNote() {
-    if (!currentShot || !activeAttempt) return;
-
-    try {
-      setSaving("review-note");
-      setError(null);
-      const updatedAttempt = await updateAttemptReviewNote(
-        currentShot.id,
-        activeAttempt.id,
-        reviewNote,
-      );
-      setAttempts((items) =>
-        items.map((item) => (item.id === updatedAttempt.id ? updatedAttempt : item)),
-      );
-      onShotUpdated();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to save review note");
-    } finally {
-      setSaving(null);
-    }
   }
 
   async function handleGenerate() {

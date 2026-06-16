@@ -6,8 +6,12 @@ function describeJob(job: Job): string {
   return `${job.type} ${target}`;
 }
 
-export function QueuePanel() {
-  const { running, pending, error, loading } = useJobs();
+interface QueuePanelProps {
+  refreshKey?: number;
+}
+
+export function QueuePanel({ refreshKey = 0 }: QueuePanelProps) {
+  const { running, pending, error, loading } = useJobs(refreshKey);
 
   return (
     <section className="queue-panel" aria-labelledby="queue-panel-title">

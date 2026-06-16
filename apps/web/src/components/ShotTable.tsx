@@ -1,9 +1,12 @@
 import type { Shot } from "../api/types";
+import { createShot, enqueueAlignment } from "../api/client";
 import { useShots } from "../hooks/useShots";
+import { useState } from "react";
 
 interface ShotTableProps {
   projectId: string;
   onShotSelect?: (shot: Shot) => void;
+  onJobsUpdated?: () => void;
 }
 
 function previewText(value: string | null, maxLength: number): string {
@@ -15,8 +18,11 @@ function formatSeconds(value: number): string {
   return value.toFixed(1).replace(/\.0$/, "");
 }
 
-export function ShotTable({ projectId, onShotSelect }: ShotTableProps) {
-  const { shots, loading, error } = useShots(projectId);
+export function ShotTable({ projectId, onShotSelect, onJobsUpdated }: ShotTableProps) {
+  const { shots, loading, error, refetch } = useShots(projectId);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [submittingAction, setSubmittingAction] = useState<string | null>(null);
 
   function selectShot(shot: Shot) {
     onShotSelect?.(shot);
@@ -31,7 +37,69 @@ export function ShotTable({ projectId, onShotSelect }: ShotTableProps) {
   }
 
   if (shots.length === 0) {
-    return <p className="shot-table__state">No shots yet. Run alignment to generate shots.</p>;
+    async function runAlignment() {
+      setSubmittingAction("alignment");
+      setActionError(null);
+      setActionMessage(null);
+      try {
+        await enqueueAlignment(projectId);
+        setActionMessage("Alignment job queued");
+        onJobsUpdated?.();
+      } catch (err: unknown) {
+        setActionError(err instanceof Error ? err.message : "Failed to queue alignment");
+      } finally {
+        setSubmittingAction(null);
+      }
+    }
+
+    async function addManualShot() {
+      setSubmittingAction("manual-shot");
+      setActionError(null);
+      setActionMessage(null);
+      try {
+        const shot = await createShot(projectId, {
+          order: 0,
+          start_time: 0,
+          end_time: 5,
+          status: "Needs Input",
+          lyrics_text: "",
+          shot_note: "",
+        });
+        setActionMessage("Manual shot added");
+        refetch();
+        onShotSelect?.(shot);
+      } catch (err: unknown) {
+        setActionError(err instanceof Error ? err.message : "Failed to add manual shot");
+      } finally {
+        setSubmittingAction(null);
+      }
+    }
+
+    return (
+      <div className="shot-table__empty">
+        <p className="shot-table__state">No shots yet. Run alignment to generate shots.</p>
+        <div className="shot-table__empty-actions">
+          <button
+            type="button"
+            className="button button--primary"
+            onClick={() => { void runAlignment(); }}
+            disabled={submittingAction !== null}
+          >
+            {submittingAction === "alignment" ? "Queueing..." : "Run alignment"}
+          </button>
+          <button
+            type="button"
+            className="button button--secondary"
+            onClick={() => { void addManualShot(); }}
+            disabled={submittingAction !== null}
+          >
+            {submittingAction === "manual-shot" ? "Adding..." : "Add manual shot"}
+          </button>
+        </div>
+        {actionMessage ? <p className="shot-table__notice">{actionMessage}</p> : null}
+        {actionError ? <p className="shot-table__state shot-table__state--error">{actionError}</p> : null}
+      </div>
+    );
   }
 
   return (
