@@ -231,3 +231,103 @@ def test_update_attempt_workflow_configuration(api_client: TestClient, db_sessio
     body = response.json()
     assert body["workflow_template_id"] == template.id
     assert body["execution_mode_id"] == mode.id
+
+
+def test_delete_inactive_attempt_keeps_active_attempt(api_client: TestClient, db_session):
+    project = Project(name="Delete Inactive Attempt Project")
+    db_session.add(project)
+    db_session.commit()
+
+    shot = Shot(
+        project_id=project.id,
+        order=0,
+        start_time=0.0,
+        end_time=2.0,
+        duration=2.0,
+        status=ShotStatus.NEEDS_REVIEW.value,
+    )
+    db_session.add(shot)
+    db_session.commit()
+
+    active_attempt = Attempt(shot_id=shot.id, status=AttemptStatus.NEEDS_REVIEW.value)
+    stale_attempt = Attempt(shot_id=shot.id, status=AttemptStatus.REJECTED.value)
+    db_session.add_all([active_attempt, stale_attempt])
+    db_session.commit()
+    shot.active_attempt_id = active_attempt.id
+    db_session.commit()
+    active_attempt_id = active_attempt.id
+    stale_attempt_id = stale_attempt.id
+
+    response = api_client.delete(f"/api/shots/{shot.id}/attempts/{stale_attempt_id}")
+
+    assert response.status_code == 204
+    db_session.expire_all()
+    assert db_session.get(Attempt, stale_attempt_id) is None
+    db_session.refresh(shot)
+    assert shot.active_attempt_id == active_attempt_id
+    assert shot.status == ShotStatus.NEEDS_REVIEW.value
+
+
+def test_delete_active_attempt_clears_active_attempt(api_client: TestClient, db_session):
+    project = Project(name="Delete Active Attempt Project")
+    db_session.add(project)
+    db_session.commit()
+
+    shot = Shot(
+        project_id=project.id,
+        order=0,
+        start_time=0.0,
+        end_time=2.0,
+        duration=2.0,
+        status=ShotStatus.NEEDS_REVIEW.value,
+    )
+    db_session.add(shot)
+    db_session.commit()
+
+    attempt = Attempt(shot_id=shot.id, status=AttemptStatus.NEEDS_REVIEW.value)
+    db_session.add(attempt)
+    db_session.commit()
+    shot.active_attempt_id = attempt.id
+    db_session.commit()
+    attempt_id = attempt.id
+
+    response = api_client.delete(f"/api/shots/{shot.id}/attempts/{attempt_id}")
+
+    assert response.status_code == 204
+    db_session.expire_all()
+    assert db_session.get(Attempt, attempt_id) is None
+    db_session.refresh(shot)
+    assert shot.active_attempt_id is None
+    assert shot.status == ShotStatus.NEEDS_INPUT.value
+
+
+def test_delete_attempt_rejects_wrong_shot(api_client: TestClient, db_session):
+    project = Project(name="Delete Wrong Shot Attempt Project")
+    db_session.add(project)
+    db_session.commit()
+
+    first_shot = Shot(
+        project_id=project.id,
+        order=0,
+        start_time=0.0,
+        end_time=2.0,
+        duration=2.0,
+    )
+    second_shot = Shot(
+        project_id=project.id,
+        order=1,
+        start_time=2.0,
+        end_time=4.0,
+        duration=2.0,
+    )
+    db_session.add_all([first_shot, second_shot])
+    db_session.commit()
+
+    attempt = Attempt(shot_id=first_shot.id, status=AttemptStatus.NEEDS_INPUT.value)
+    db_session.add(attempt)
+    db_session.commit()
+
+    response = api_client.delete(f"/api/shots/{second_shot.id}/attempts/{attempt.id}")
+
+    assert response.status_code == 404
+    assert db_session.get(Attempt, attempt.id) is not None

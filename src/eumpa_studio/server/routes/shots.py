@@ -306,6 +306,20 @@ def update_shot_attempt(
     return AttemptRead.model_validate(attempt)
 
 
+@router.delete("/shots/{shot_id}/attempts/{attempt_id}", status_code=204)
+def delete_shot_attempt(shot_id: str, attempt_id: str, db: DbSession) -> None:
+    """Delete a shot attempt without deleting shared project assets."""
+    shot = _get_shot_with_active_attempt(db, shot_id)
+    attempt = _get_attempt_for_shot(db, shot_id, attempt_id)
+
+    if shot.active_attempt_id == attempt.id:
+        shot.active_attempt_id = None
+        shot.status = ShotStatus.NEEDS_INPUT.value
+
+    db.delete(attempt)
+    db.commit()
+
+
 @router.post("/projects/{project_id}/shots", response_model=ShotRead, status_code=201)
 def create_shot(project_id: str, body: ShotCreate, db: DbSession) -> ShotRead:
     """Create a shot manually for a project."""
