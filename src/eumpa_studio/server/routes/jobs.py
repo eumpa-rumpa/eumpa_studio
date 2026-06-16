@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from eumpa_studio.db.session import get_session
-from eumpa_studio.domain.models import Job
+from eumpa_studio.domain.models import Attempt, Job
 from eumpa_studio.domain.statuses import JobStatus
 
 router = APIRouter()
@@ -93,3 +93,21 @@ def enqueue_alignment_job(project_id: str, db: DbSession) -> Job:
     Returns 201 + :class:`JobRead` with ``type="align"``.
     """
     return _create_job(db, "align", "project", project_id)
+
+
+@router.post(
+    "/shots/{shot_id}/attempts/{attempt_id}/render",
+    response_model=JobRead,
+    status_code=201,
+)
+def enqueue_render_job(shot_id: str, attempt_id: str, db: DbSession) -> Job:
+    """Create a render job for a configured shot attempt."""
+    attempt = db.get(Attempt, attempt_id)
+    if attempt is None or attempt.shot_id != shot_id:
+        raise HTTPException(status_code=404, detail="Attempt not found")
+    if not attempt.workflow_template_id or not attempt.execution_mode_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Select a workflow template and execution mode before rendering",
+        )
+    return _create_job(db, "render", "attempt", attempt_id)

@@ -63,11 +63,11 @@ class ExecutionModeRead(BaseModel):
 
 class ExecutionModeCreate(BaseModel):
     name: str
-    required_inputs: Optional[str] = None
-    optional_inputs: Optional[str] = None
-    node_bindings: Optional[str] = None
-    validation_rules: Optional[str] = None
-    exposed_params: Optional[str] = None
+    required_inputs: Optional[str] = "[]"
+    optional_inputs: Optional[str] = "[]"
+    node_bindings: Optional[str] = "{}"
+    validation_rules: Optional[str] = "{}"
+    exposed_params: Optional[str] = "{}"
 
 
 class PatchRequest(BaseModel):

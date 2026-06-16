@@ -5,28 +5,17 @@ from __future__ import annotations
 import os
 import subprocess
 import threading
-from dataclasses import dataclass
 from pathlib import Path
 
 import typer
 import uvicorn
 
-from eumpa_studio.execution.jobs import unsupported_job_runner
+from eumpa_studio.config import Settings
+from eumpa_studio.execution.jobs import AppJobRunner
 from eumpa_studio.execution.worker import WorkerLoop
 
 
 app_cli = typer.Typer(no_args_is_help=True)
-
-
-@dataclass(frozen=True)
-class Settings:
-    """Runtime settings needed by the local start command."""
-
-    data_root: Path
-    output_path: Path
-    cache_path: Path
-    comfyui_url: str
-    codex_cli_path: str
 
 
 def get_settings() -> Settings:
@@ -38,6 +27,7 @@ def get_settings() -> Settings:
         cache_path=data_root / "cache",
         comfyui_url=os.environ.get("EUMPA_COMFYUI_URL", "http://localhost:8188"),
         codex_cli_path=os.environ.get("EUMPA_CODEX_CLI_PATH", "codex"),
+        alignment_command=os.environ.get("EUMPA_ALIGNMENT_COMMAND", "align"),
     )
 
 
@@ -64,7 +54,8 @@ def start(
     from eumpa_studio.db.session import SessionLocal
 
     stop_event = threading.Event()
-    worker_loop = WorkerLoop(session_factory=SessionLocal, runner=unsupported_job_runner)
+    runner = AppJobRunner(session_factory=SessionLocal, settings=settings)
+    worker_loop = WorkerLoop(session_factory=SessionLocal, runner=runner)
     worker_thread = worker_loop.start_in_thread(stop_event=stop_event)
 
     try:

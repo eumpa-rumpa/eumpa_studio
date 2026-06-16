@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import {
+  enqueueRender,
+  fetchExecutionModes,
   fetchShotAttempts,
+  fetchWorkflowTemplates,
   generatePrompt as generatePromptRequest,
   savePrompt as savePromptRequest,
   updateShot,
 } from "../api/client";
-import type { Attempt, Shot } from "../api/types";
+import type { Attempt, ExecutionMode, Shot, WorkflowTemplate } from "../api/types";
 import { AssetPicker } from "./AssetPicker";
 import { VideoPreviewModal } from "./VideoPreviewModal";
 
@@ -99,6 +102,13 @@ export function ShotDrawer({ shot, projectId, onClose, onShotUpdated }: ShotDraw
   const [reviewStatus, setReviewStatus] = useState<string | null>(null);
   const [reviewSaving, setReviewSaving] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplate[]>([]);
+  const [executionModes, setExecutionModes] = useState<ExecutionMode[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [selectedModeId, setSelectedModeId] = useState("");
+  const [renderSaving, setRenderSaving] = useState(false);
+  const [renderMessage, setRenderMessage] = useState<string | null>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   const activeAttempt = useMemo(() => {
     if (!currentShot?.active_attempt_id) return null;
@@ -156,7 +166,68 @@ export function ShotDrawer({ shot, projectId, onClose, onShotUpdated }: ShotDraw
     setReviewError(null);
     setVideoUrl(null);
     setVideoError(null);
-  }, [activeAttempt?.id, activeAttempt?.prompt_ko, activeAttempt?.prompt_en, activeAttempt?.review_note]);
+    setSelectedTemplateId(activeAttempt?.workflow_template_id ?? "");
+    setSelectedModeId(activeAttempt?.execution_mode_id ?? "");
+    setRenderMessage(null);
+    setRenderError(null);
+  }, [
+    activeAttempt?.id,
+    activeAttempt?.prompt_ko,
+    activeAttempt?.prompt_en,
+    activeAttempt?.review_note,
+    activeAttempt?.workflow_template_id,
+    activeAttempt?.execution_mode_id,
+  ]);
+
+  useEffect(() => {
+    if (!activeAttempt) {
+      setWorkflowTemplates([]);
+      return;
+    }
+
+    let cancelled = false;
+    fetchWorkflowTemplates()
+      .then((templates) => {
+        if (!cancelled) {
+          setWorkflowTemplates(templates);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setRenderError(err instanceof Error ? err.message : "Failed to load workflows");
+          setWorkflowTemplates([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeAttempt?.id]);
+
+  useEffect(() => {
+    if (!selectedTemplateId) {
+      setExecutionModes([]);
+      return;
+    }
+
+    let cancelled = false;
+    fetchExecutionModes(selectedTemplateId)
+      .then((modes) => {
+        if (!cancelled) {
+          setExecutionModes(modes);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setRenderError(err instanceof Error ? err.message : "Failed to load execution modes");
+          setExecutionModes([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTemplateId]);
 
   if (!currentShot) {
     return null;
@@ -264,6 +335,43 @@ export function ShotDrawer({ shot, projectId, onClose, onShotUpdated }: ShotDraw
       setVideoUrl(url);
     } catch (err: unknown) {
       setVideoError(err instanceof Error ? err.message : "Failed to load video");
+    }
+  }
+
+  async function handleSaveRenderSetup() {
+    if (!currentShot || !activeAttempt) return;
+    setRenderSaving(true);
+    setRenderError(null);
+    setRenderMessage(null);
+    try {
+      const updated = await savePromptRequest(currentShot.id, activeAttempt.id, {
+        workflow_template_id: selectedTemplateId || null,
+        execution_mode_id: selectedModeId || null,
+      });
+      setAttempts((items) =>
+        items.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
+      );
+      setRenderMessage("Render setup saved");
+    } catch (err: unknown) {
+      setRenderError(err instanceof Error ? err.message : "Failed to save render setup");
+    } finally {
+      setRenderSaving(false);
+    }
+  }
+
+  async function handleQueueRender() {
+    if (!currentShot || !activeAttempt) return;
+    setRenderSaving(true);
+    setRenderError(null);
+    setRenderMessage(null);
+    try {
+      await enqueueRender(currentShot.id, activeAttempt.id);
+      setRenderMessage("Render job queued");
+      onShotUpdated();
+    } catch (err: unknown) {
+      setRenderError(err instanceof Error ? err.message : "Failed to queue render");
+    } finally {
+      setRenderSaving(false);
     }
   }
 
@@ -506,6 +614,97 @@ export function ShotDrawer({ shot, projectId, onClose, onShotUpdated }: ShotDraw
               </div>
             </form>
           )}
+        </section>
+
+        <section className="shot-drawer__section" aria-labelledby="render-setup-heading">
+          <div className="shot-drawer__section-header">
+            <h3 id="render-setup-heading" className="shot-drawer__section-title">
+              Render Setup
+            </h3>
+            <button
+              type="button"
+              className="shot-drawer__action"
+              disabled={
+                renderSaving ||
+                !activeAttempt ||
+                !activeAttempt.workflow_template_id ||
+                !activeAttempt.execution_mode_id
+              }
+              onClick={() => { void handleQueueRender(); }}
+            >
+              {renderSaving ? "Queueing..." : "Queue Render"}
+            </button>
+          </div>
+
+          {activeAttempt === null ? (
+            <p className="shot-drawer__empty">Select an attempt before rendering.</p>
+          ) : (
+            <div className="shot-drawer__prompt-form">
+              <label className="shot-drawer__field" htmlFor="workflow-template">
+                <span>Workflow Template</span>
+                <select
+                  id="workflow-template"
+                  value={selectedTemplateId}
+                  onChange={(event) => {
+                    setSelectedTemplateId(event.target.value);
+                    setSelectedModeId("");
+                    setRenderMessage(null);
+                    setRenderError(null);
+                  }}
+                >
+                  <option value="">Select workflow</option>
+                  {workflowTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="shot-drawer__field" htmlFor="execution-mode">
+                <span>Execution Mode</span>
+                <select
+                  id="execution-mode"
+                  value={selectedModeId}
+                  disabled={!selectedTemplateId}
+                  onChange={(event) => {
+                    setSelectedModeId(event.target.value);
+                    setRenderMessage(null);
+                    setRenderError(null);
+                  }}
+                >
+                  <option value="">Select mode</option>
+                  {executionModes.map((mode) => (
+                    <option key={mode.id} value={mode.id}>
+                      {mode.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {workflowTemplates.length === 0 ? (
+                <p className="shot-drawer__muted">No workflow templates configured.</p>
+              ) : null}
+
+              <div className="shot-drawer__footer">
+                {renderMessage ? <span className="shot-drawer__saved">{renderMessage}</span> : null}
+                <button
+                  type="button"
+                  className="shot-drawer__action shot-drawer__action--primary"
+                  disabled={renderSaving || !selectedTemplateId || !selectedModeId}
+                  onClick={() => { void handleSaveRenderSetup(); }}
+                >
+                  {renderSaving ? "Saving..." : "Save Render Setup"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {renderError ? (
+            <p className="shot-drawer__error" role="alert">
+              {renderError}
+            </p>
+          ) : null}
         </section>
 
         {/* Status Actions (existing) */}
