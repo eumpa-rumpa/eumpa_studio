@@ -99,6 +99,8 @@ class ShotUpdate(BaseModel):
 
 
 class AttemptUpdate(BaseModel):
+    prompt_ko: str | None = None
+    prompt_en: str | None = None
     review_note: str | None = None
 
 

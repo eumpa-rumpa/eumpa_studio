@@ -23,13 +23,18 @@ def ensure_project_dirs(data_root: Path, project_id: str) -> Path:
     return inputs_dir
 
 
-def save_upload(upload: UploadFile, dest_dir: Path, data_root: Path) -> tuple[str, str]:
+def save_upload(
+    upload: UploadFile,
+    dest_dir: Path,
+    data_root: Path,
+    dest_name: str | None = None,
+) -> tuple[str, str]:
     """Save an uploaded file to dest_dir and return (storage_backend, relative_path).
 
     The relative_path is relative to data_root, e.g.
     ``"projects/{project_id}/inputs/audio.mp3"``.
     """
-    raw_name = upload.filename or "upload"
+    raw_name = dest_name or upload.filename or "upload"
     safe_name = Path(raw_name).name  # strips any directory components
     dest_path = dest_dir / safe_name
     with dest_path.open("wb") as out:

@@ -7,6 +7,7 @@ import {
   updateShot,
 } from "../api/client";
 import type { Attempt, Shot } from "../api/types";
+import { AssetPicker } from "./AssetPicker";
 import { VideoPreviewModal } from "./VideoPreviewModal";
 
 interface ShotDrawerProps {
@@ -206,6 +207,14 @@ export function ShotDrawer({ shot, projectId, onClose, onShotUpdated }: ShotDraw
     void saveShotFields({ active_attempt_id: attemptId }, `attempt-${attemptId}`);
   }
 
+  function activateCreatedAttempt(attempt: Attempt) {
+    setAttempts((items) => {
+      const next = items.filter((item) => item.id !== attempt.id);
+      return [...next, attempt];
+    });
+    void saveShotFields({ active_attempt_id: attempt.id }, `attempt-${attempt.id}`);
+  }
+
   async function handleGenerate() {
     if (!activeAttempt) return;
     setPromptError(null);
@@ -393,6 +402,17 @@ export function ShotDrawer({ shot, projectId, onClose, onShotUpdated }: ShotDraw
               </button>
             ))}
           </div>
+        </section>
+
+        <section className="shot-drawer__section" aria-labelledby="reference-image-heading">
+          <h3 id="reference-image-heading" className="shot-drawer__section-title">
+            Reference Image
+          </h3>
+          <AssetPicker
+            projectId={projectId}
+            shotId={currentShot.id}
+            onAttemptCreated={activateCreatedAttempt}
+          />
         </section>
 
         <section className="shot-drawer__section" aria-labelledby="active-attempt-heading">

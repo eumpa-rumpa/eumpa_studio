@@ -154,3 +154,40 @@ def test_update_attempt_review_note(api_client: TestClient, db_session):
     body = response.json()
     assert body["id"] == attempt.id
     assert body["review_note"] == "tighten the close-up before approval"
+
+
+def test_update_attempt_prompts(api_client: TestClient, db_session):
+    project = Project(name="Prompt Editing Project")
+    db_session.add(project)
+    db_session.commit()
+
+    shot = Shot(
+        project_id=project.id,
+        order=0,
+        start_time=0.0,
+        end_time=2.0,
+        duration=2.0,
+    )
+    db_session.add(shot)
+    db_session.commit()
+
+    attempt = Attempt(
+        shot_id=shot.id,
+        status=AttemptStatus.NEEDS_INPUT.value,
+    )
+    db_session.add(attempt)
+    db_session.commit()
+
+    response = api_client.patch(
+        f"/api/shots/{shot.id}/attempts/{attempt.id}",
+        json={
+            "prompt_ko": "브라우저에서 저장한 한국어 프롬프트",
+            "prompt_en": "Prompt saved from the browser",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == attempt.id
+    assert body["prompt_ko"] == "브라우저에서 저장한 한국어 프롬프트"
+    assert body["prompt_en"] == "Prompt saved from the browser"
