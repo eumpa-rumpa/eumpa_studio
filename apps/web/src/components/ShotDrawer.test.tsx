@@ -165,6 +165,18 @@ beforeEach(() => {
     ) {
       return Promise.resolve(jsonResponse(renderJob, { status: 201 }));
     }
+    if (
+      url === "/api/shots/shot-1/attempts/attempt-1/review" &&
+      init?.method === "POST"
+    ) {
+      return Promise.resolve(jsonResponse({ ...configuredAttempt, status: "Redo" }));
+    }
+    if (
+      url === "/api/shots/shot-1/attempts/attempt-1" &&
+      init?.method === "DELETE"
+    ) {
+      return Promise.resolve(new Response(null, { status: 204 }));
+    }
 
     return Promise.reject(new Error(`Unhandled request: ${url}`));
   });
@@ -207,13 +219,14 @@ describe("ShotDrawer asset attempts", () => {
       await screen.findByRole("button", { name: "Create attempt from reference.png" }),
     );
 
-    expect(await screen.findByText("No prompt")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText("No prompt").length).toBeGreaterThan(0));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Generate Prompt" })).toBeEnabled();
-      expect(screen.getByRole("button", { name: "Play Video" })).toBeDisabled();
-      expect(screen.getByRole("textbox", { name: "Review Note" })).toBeEnabled();
       expect(onShotUpdated).toHaveBeenCalled();
     });
+    await user.click(screen.getByRole("button", { name: "Expand Review" }));
+    expect(screen.getByRole("button", { name: "Play Video" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Review Note" })).toBeEnabled();
 
     await user.selectOptions(
       await screen.findByRole("combobox", { name: "Workflow Template" }),
@@ -224,7 +237,9 @@ describe("ShotDrawer asset attempts", () => {
       "mode-1",
     );
     await user.click(screen.getByRole("button", { name: "Save Render Setup" }));
-    await user.click(await screen.findByRole("button", { name: "Queue Render" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Queue render for active attempt" }),
+    );
 
     expect(await screen.findByText("Render job queued")).toBeInTheDocument();
   });
@@ -342,18 +357,211 @@ describe("ShotDrawer asset attempts", () => {
 
     render(
       <ShotDrawer
-        shot={shot}
+        shot={{
+          ...shot,
+          active_attempt_id: "attempt-1",
+          active_attempt: configuredAttempt,
+          attempt_count: 1,
+        }}
         projectId="project-1"
         onClose={() => {}}
         onShotUpdated={() => {}}
       />,
     );
 
-    await user.click(await screen.findByText("한국어 프롬프트"));
-    await user.click(await screen.findByRole("button", { name: "Queue Render" }));
+    await screen.findAllByText("한국어 프롬프트");
+    await user.click(
+      await screen.findByRole("button", { name: "Queue render for active attempt" }),
+    );
 
     expect(
       await screen.findByText("Workflow template file not found: /tmp/missing.json"),
     ).toBeInTheDocument();
+  });
+
+  test("keeps primary render action visible when render settings are collapsed", async () => {
+    const user = userEvent.setup();
+    vi.mocked(window.fetch).mockImplementation((input, init) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      if (url === "/api/shots/shot-1/attempts") {
+        return Promise.resolve(jsonResponse([configuredAttempt]));
+      }
+      if (url === "/api/assets/project-1") {
+        return Promise.resolve(jsonResponse([asset]));
+      }
+      if (url === "/api/workflows/templates") {
+        return Promise.resolve(jsonResponse([template]));
+      }
+      if (url === "/api/workflows/templates/template-1/modes") {
+        return Promise.resolve(jsonResponse([mode]));
+      }
+      if (
+        url === "/api/shots/shot-1/attempts/attempt-1/render" &&
+        init?.method === "POST"
+      ) {
+        return Promise.resolve(jsonResponse(renderJob, { status: 201 }));
+      }
+
+      return Promise.reject(new Error(`Unhandled request: ${url}`));
+    });
+
+    render(
+      <ShotDrawer
+        shot={{
+          ...shot,
+          active_attempt_id: "attempt-1",
+          active_attempt: configuredAttempt,
+          attempt_count: 1,
+        }}
+        projectId="project-1"
+        onClose={() => {}}
+        onShotUpdated={() => {}}
+      />,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Collapse Render settings" }));
+
+    expect(screen.queryByRole("combobox", { name: "Workflow Template" })).not.toBeInTheDocument();
+
+    const primaryRenderButton = screen.getByRole("button", {
+      name: "Queue render for active attempt",
+    });
+    expect(primaryRenderButton).toBeEnabled();
+
+    await user.click(primaryRenderButton);
+
+    expect(await screen.findByText("Render job queued")).toBeInTheDocument();
+  });
+
+  test("explains why render cannot be queued", async () => {
+    vi.mocked(window.fetch).mockImplementation((input) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      if (url === "/api/shots/shot-1/attempts") {
+        return Promise.resolve(jsonResponse([attempt]));
+      }
+      if (url === "/api/assets/project-1") {
+        return Promise.resolve(jsonResponse([asset]));
+      }
+      if (url === "/api/workflows/templates") {
+        return Promise.resolve(jsonResponse([template]));
+      }
+
+      return Promise.reject(new Error(`Unhandled request: ${url}`));
+    });
+
+    render(
+      <ShotDrawer
+        shot={{
+          ...shot,
+          active_attempt_id: "attempt-1",
+          active_attempt: attempt,
+          attempt_count: 1,
+        }}
+        projectId="project-1"
+        onClose={() => {}}
+        onShotUpdated={() => {}}
+      />,
+    );
+
+    expect(await screen.findByText("Choose a workflow and mode before rendering.")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Queue render for active attempt" }),
+    ).toBeDisabled();
+  });
+
+  test("shows explicit attempt card actions and deletes an attempt", async () => {
+    const user = userEvent.setup();
+    const onShotUpdated = vi.fn();
+    const secondAttempt: Attempt = {
+      ...attempt,
+      id: "attempt-2",
+      status: "Rejected",
+      prompt_ko: "삭제할 프롬프트",
+      created_at: "2026-06-16T02:00:00Z",
+    };
+
+    vi.mocked(window.fetch).mockImplementation((input, init) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      if (url === "/api/shots/shot-1/attempts") {
+        return Promise.resolve(jsonResponse([configuredAttempt, secondAttempt]));
+      }
+      if (url === "/api/assets/project-1") {
+        return Promise.resolve(jsonResponse([asset]));
+      }
+      if (url === "/api/workflows/templates") {
+        return Promise.resolve(jsonResponse([template]));
+      }
+      if (url === "/api/workflows/templates/template-1/modes") {
+        return Promise.resolve(jsonResponse([mode]));
+      }
+      if (url === "/api/shots/shot-1" && init?.method === "PATCH") {
+        return Promise.resolve(
+          jsonResponse({
+            ...shot,
+            active_attempt_id: "attempt-2",
+            active_attempt: secondAttempt,
+            attempt_count: 2,
+          }),
+        );
+      }
+      if (
+        url === "/api/shots/shot-1/attempts/attempt-2" &&
+        init?.method === "DELETE"
+      ) {
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+
+      return Promise.reject(new Error(`Unhandled request: ${url}`));
+    });
+
+    render(
+      <ShotDrawer
+        shot={{
+          ...shot,
+          active_attempt_id: "attempt-1",
+          active_attempt: configuredAttempt,
+          attempt_count: 2,
+        }}
+        projectId="project-1"
+        onClose={() => {}}
+        onShotUpdated={onShotUpdated}
+      />,
+    );
+
+    expect(await screen.findByText("Active attempt")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use attempt attempt-2" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete attempt attempt-2" })).toBeInTheDocument();
+    expect(screen.getAllByText("Ready to render").length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: "Use attempt attempt-2" }));
+    await waitFor(() => expect(onShotUpdated).toHaveBeenCalled());
+
+    await user.click(screen.getByRole("button", { name: "Delete attempt attempt-2" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("삭제할 프롬프트")).not.toBeInTheDocument();
+    });
+    expect(window.fetch).toHaveBeenCalledWith(
+      "/api/shots/shot-1/attempts/attempt-2",
+      expect.objectContaining({ method: "DELETE" }),
+    );
   });
 });

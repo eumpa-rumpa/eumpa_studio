@@ -67,6 +67,22 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return readJson<T>(response);
 }
 
+async function deleteRequest(path: string): Promise<void> {
+  const response = await fetch(`${BASE_URL}${path}`, { method: "DELETE" });
+  if (!response.ok) {
+    let message = `HTTP ${response.status}: ${response.statusText}`;
+    try {
+      const errorBody = (await response.json()) as { detail?: unknown };
+      if (typeof errorBody.detail === "string") {
+        message = errorBody.detail;
+      }
+    } catch {
+      // Keep the HTTP status fallback when the response is not JSON.
+    }
+    throw new Error(message);
+  }
+}
+
 export async function fetchHealth(): Promise<HealthResponse> {
   return get<HealthResponse>("/health");
 }
@@ -194,5 +210,11 @@ export async function enqueueRender(shotId: string, attemptId: string): Promise<
   return postJson<Job>(
     `/shots/${encodeURIComponent(shotId)}/attempts/${encodeURIComponent(attemptId)}/render`,
     {},
+  );
+}
+
+export async function deleteAttempt(shotId: string, attemptId: string): Promise<void> {
+  return deleteRequest(
+    `/shots/${encodeURIComponent(shotId)}/attempts/${encodeURIComponent(attemptId)}`,
   );
 }

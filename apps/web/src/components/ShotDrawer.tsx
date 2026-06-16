@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import {
+  deleteAttempt,
   enqueueRender,
   fetchExecutionModes,
   fetchShotAttempts,
@@ -131,6 +132,144 @@ function ShotAudioPreview({
   );
 }
 
+type SectionKey = "context" | "attempts" | "prompt" | "render" | "review";
+
+interface DrawerSectionProps {
+  id: SectionKey;
+  title: string;
+  open: boolean;
+  onToggle: (id: SectionKey) => void;
+  children: ReactNode;
+}
+
+function DrawerSection({ id, title, open, onToggle, children }: DrawerSectionProps) {
+  const label = `${open ? "Collapse" : "Expand"} ${title}`;
+  return (
+    <section className="shot-drawer__section" aria-labelledby={`${id}-section-heading`}>
+      <button
+        type="button"
+        className="shot-drawer__section-toggle"
+        aria-expanded={open}
+        aria-label={label}
+        onClick={() => onToggle(id)}
+      >
+        <span id={`${id}-section-heading`} className="shot-drawer__section-title">
+          {title}
+        </span>
+        <span aria-hidden="true">{open ? "-" : "+"}</span>
+      </button>
+      {open ? <div className="shot-drawer__section-body">{children}</div> : null}
+    </section>
+  );
+}
+
+function attemptStatusTone(status: string): string {
+  return status.toLowerCase().replace(/\s+/g, "-");
+}
+
+function attemptReadiness(attempt: Attempt): string {
+  if (!attempt.workflow_template_id || !attempt.execution_mode_id) {
+    return "Needs render setup";
+  }
+  if (!attempt.prompt_ko && !attempt.prompt_en) {
+    return "Needs prompt";
+  }
+  if (attempt.output_metadata) {
+    return "Rendered output";
+  }
+  return "Ready to render";
+}
+
+interface AttemptCardProps {
+  attempt: Attempt;
+  active: boolean;
+  saving: boolean;
+  deleting: boolean;
+  onUse: (attemptId: string) => void;
+  onReview: (attemptId: string, status: ReviewStatus) => void;
+  onDelete: (attemptId: string) => void;
+}
+
+function AttemptCard({
+  attempt,
+  active,
+  saving,
+  deleting,
+  onUse,
+  onReview,
+  onDelete,
+}: AttemptCardProps) {
+  const preview = previewText(attempt.prompt_ko || attempt.prompt_en, 92);
+  return (
+    <article
+      className={
+        active
+          ? "shot-drawer__attempt-card shot-drawer__attempt-card--active"
+          : "shot-drawer__attempt-card"
+      }
+      aria-label={`Attempt ${attempt.id}`}
+    >
+      <div className="shot-drawer__attempt-card-head">
+        <span
+          className={`shot-drawer__status shot-drawer__status--${attemptStatusTone(attempt.status)}`}
+        >
+          {attempt.status}
+        </span>
+        {active ? <span className="shot-drawer__active-marker">Active attempt</span> : null}
+      </div>
+      <p className="shot-drawer__attempt-preview">{preview}</p>
+      <div className="shot-drawer__attempt-meta">
+        <time dateTime={attempt.created_at}>{formatDate(attempt.created_at)}</time>
+        <span>{attemptReadiness(attempt)}</span>
+      </div>
+      <div className="shot-drawer__attempt-actions">
+        <button
+          type="button"
+          className="shot-drawer__btn"
+          disabled={active || saving || deleting}
+          aria-label={`Use attempt ${attempt.id}`}
+          onClick={() => onUse(attempt.id)}
+        >
+          Use
+        </button>
+        <button
+          type="button"
+          className="shot-drawer__btn"
+          disabled={saving || deleting}
+          onClick={() => onReview(attempt.id, "Selected")}
+        >
+          Selected
+        </button>
+        <button
+          type="button"
+          className="shot-drawer__btn"
+          disabled={saving || deleting}
+          onClick={() => onReview(attempt.id, "Redo")}
+        >
+          Redo
+        </button>
+        <button
+          type="button"
+          className="shot-drawer__btn"
+          disabled={saving || deleting}
+          onClick={() => onReview(attempt.id, "Rejected")}
+        >
+          Reject
+        </button>
+        <button
+          type="button"
+          className="shot-drawer__btn shot-drawer__btn--danger"
+          disabled={deleting}
+          aria-label={`Delete attempt ${attempt.id}`}
+          onClick={() => onDelete(attempt.id)}
+        >
+          {deleting ? "Deleting..." : "Delete"}
+        </button>
+      </div>
+    </article>
+  );
+}
+
 export function ShotDrawer({
   shot,
   projectId,
@@ -147,6 +286,14 @@ export function ShotDrawer({
   const [loadingAttempts, setLoadingAttempts] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const [deletingAttemptId, setDeletingAttemptId] = useState<string | null>(null);
+  const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
+    context: true,
+    attempts: true,
+    prompt: true,
+    render: true,
+    review: false,
+  });
 
   // Prompt generation state
   const [promptKo, setPromptKo] = useState("");
@@ -189,6 +336,18 @@ export function ShotDrawer({
       workflowTemplates.find((template) => template.id === selectedTemplateId) ?? null,
     [selectedTemplateId, workflowTemplates],
   );
+
+  const renderDisabledReason = useMemo(() => {
+    if (!activeAttempt) return "Select or create an attempt before rendering.";
+    if (!activeAttempt.workflow_template_id || !activeAttempt.execution_mode_id) {
+      return "Choose a workflow and mode before rendering.";
+    }
+    if (activeWorkflowTemplate?.is_available === false) {
+      return "Selected workflow file is missing.";
+    }
+    return null;
+  }, [activeAttempt, activeWorkflowTemplate?.is_available]);
+  const canQueueRender = !renderSaving && renderDisabledReason === null;
 
   useEffect(() => {
     setCurrentShot(shot);
@@ -245,6 +404,9 @@ export function ShotDrawer({
     setSelectedModeId(activeAttempt?.execution_mode_id ?? "");
     setRenderMessage(null);
     setRenderError(null);
+    if (activeAttempt?.output_metadata || activeAttempt?.review_note) {
+      setOpenSections((sections) => ({ ...sections, review: true }));
+    }
   }, [
     activeAttempt?.id,
     activeAttempt?.prompt_ko,
@@ -252,6 +414,7 @@ export function ShotDrawer({
     activeAttempt?.review_note,
     activeAttempt?.workflow_template_id,
     activeAttempt?.execution_mode_id,
+    activeAttempt?.output_metadata,
   ]);
 
   useEffect(() => {
@@ -343,10 +506,6 @@ export function ShotDrawer({
     void saveShotFields({ shot_note: shotNote }, "shot-note");
   }
 
-  function markStatus(status: string) {
-    void saveShotFields({ status }, `status-${status}`);
-  }
-
   function selectAttempt(attemptId: string) {
     if (!currentShot) return;
     if (attemptId === currentShot.active_attempt_id) return;
@@ -359,6 +518,10 @@ export function ShotDrawer({
       return [...next, attempt];
     });
     void saveShotFields({ active_attempt_id: attempt.id }, `attempt-${attempt.id}`);
+  }
+
+  function toggleSection(section: SectionKey) {
+    setOpenSections((sections) => ({ ...sections, [section]: !sections[section] }));
   }
 
   async function handleGenerate() {
@@ -450,6 +613,72 @@ export function ShotDrawer({
     }
   }
 
+  async function handleReviewAttempt(attemptId: string, status: ReviewStatus) {
+    if (!currentShot) return;
+    setReviewError(null);
+    setReviewSaving(true);
+    try {
+      await postReview(currentShot.id, attemptId, status);
+      setAttempts((items) =>
+        items.map((item) =>
+          item.id === attemptId ? { ...item, status } : item,
+        ),
+      );
+      if (status === "Selected") {
+        const selectedAttempt = attempts.find((item) => item.id === attemptId);
+        setCurrentShot((current) =>
+          current
+            ? {
+                ...current,
+                active_attempt_id: attemptId,
+                active_attempt: selectedAttempt
+                  ? { ...selectedAttempt, status }
+                  : current.active_attempt,
+                status,
+              }
+            : current,
+        );
+      }
+      if (attemptId === activeAttempt?.id) {
+        setReviewStatus(status);
+      }
+      onShotUpdated();
+    } catch (err: unknown) {
+      setReviewError(err instanceof Error ? err.message : "Failed to update review");
+    } finally {
+      setReviewSaving(false);
+    }
+  }
+
+  async function handleDeleteAttempt(attemptId: string) {
+    if (!currentShot) return;
+    setDeletingAttemptId(attemptId);
+    setError(null);
+    try {
+      await deleteAttempt(currentShot.id, attemptId);
+      setAttempts((items) => items.filter((item) => item.id !== attemptId));
+      setCurrentShot((current) => {
+        if (!current) return current;
+        const nextCount = Math.max(0, current.attempt_count - 1);
+        if (current.active_attempt_id === attemptId) {
+          return {
+            ...current,
+            active_attempt_id: null,
+            active_attempt: null,
+            attempt_count: nextCount,
+            status: "Needs Input",
+          };
+        }
+        return { ...current, attempt_count: nextCount };
+      });
+      onShotUpdated();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to delete attempt");
+    } finally {
+      setDeletingAttemptId(null);
+    }
+  }
+
   async function handleReview(status: ReviewStatus) {
     if (!currentShot || !activeAttempt) return;
     setReviewError(null);
@@ -501,10 +730,42 @@ export function ShotDrawer({
 
         {error ? <p className="shot-drawer__error">{error}</p> : null}
 
-        <section className="shot-drawer__section" aria-labelledby="time-range-heading">
-          <h3 id="time-range-heading" className="shot-drawer__section-title">
-            Time Range
-          </h3>
+        <section className="shot-drawer__summary" aria-labelledby="active-attempt-summary">
+          <div>
+            <p className="shot-drawer__eyebrow">Active attempt</p>
+            <h3 id="active-attempt-summary" className="shot-drawer__summary-title">
+              {activeAttempt ? previewText(activeAttempt.prompt_ko || activeAttempt.prompt_en, 64) : "No attempt selected"}
+            </h3>
+            <p className="shot-drawer__summary-meta">
+              {activeAttempt ? attemptReadiness(activeAttempt) : "Create or select an attempt before rendering."}
+            </p>
+            {renderDisabledReason ? (
+              <p className="shot-drawer__render-reason">{renderDisabledReason}</p>
+            ) : null}
+            {renderMessage ? <p className="shot-drawer__saved">{renderMessage}</p> : null}
+            {renderError ? (
+              <p className="shot-drawer__error" role="alert">
+                {renderError}
+              </p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="shot-drawer__action shot-drawer__action--primary shot-drawer__queue"
+            aria-label="Queue render for active attempt"
+            disabled={!canQueueRender}
+            onClick={() => { void handleQueueRender(); }}
+          >
+            {renderSaving ? "Queueing..." : "Queue Render"}
+          </button>
+        </section>
+
+        <DrawerSection
+          id="context"
+          title="Shot context"
+          open={openSections.context}
+          onToggle={toggleSection}
+        >
           <div className="shot-drawer__field-row">
             <label className="shot-drawer__field">
               <span>Start</span>
@@ -531,91 +792,67 @@ export function ShotDrawer({
             onClick={saveTimeRange}
             disabled={saving === "time"}
           >
-            Save
+            Save time range
           </button>
-        </section>
-
-        <section className="shot-drawer__section" aria-labelledby="audio-preview-heading">
-          <h3 id="audio-preview-heading" className="shot-drawer__section-title">
-            Audio Preview
-          </h3>
           <ShotAudioPreview
             projectId={projectId}
             startTime={currentShot.start_time}
             endTime={currentShot.end_time}
             audioAvailable={projectAudioAvailable}
           />
-        </section>
-
-        <section className="shot-drawer__section" aria-labelledby="lyrics-heading">
-          <h3 id="lyrics-heading" className="shot-drawer__section-title">
-            Full Lyrics
-          </h3>
-          <div className="shot-drawer__readonly">{currentShot.lyrics_text || "—"}</div>
-        </section>
-
-        <section className="shot-drawer__section" aria-labelledby="shot-note-heading">
-          <h3 id="shot-note-heading" className="shot-drawer__section-title">
-            Shot Note
-          </h3>
+          <div className="shot-drawer__readonly">{currentShot.lyrics_text || "-"}</div>
           <textarea
             className="shot-drawer__textarea"
+            aria-label="Shot note"
             value={shotNote}
             onChange={(event) => setShotNote(event.target.value)}
             onBlur={saveShotNote}
             rows={5}
           />
-        </section>
+        </DrawerSection>
 
-        <section className="shot-drawer__section" aria-labelledby="attempts-heading">
-          <h3 id="attempts-heading" className="shot-drawer__section-title">
-            Attempts
-          </h3>
+        <DrawerSection
+          id="attempts"
+          title="Attempts"
+          open={openSections.attempts}
+          onToggle={toggleSection}
+        >
           {loadingAttempts ? <p className="shot-drawer__muted">Loading attempts...</p> : null}
           {!loadingAttempts && attempts.length === 0 ? (
             <p className="shot-drawer__muted">No attempts yet.</p>
           ) : null}
           <div className="shot-drawer__attempts">
             {attempts.map((attempt) => (
-              <button
+              <AttemptCard
                 key={attempt.id}
-                type="button"
-                className={
-                  attempt.id === currentShot.active_attempt_id
-                    ? "shot-drawer__attempt shot-drawer__attempt--active"
-                    : "shot-drawer__attempt"
-                }
-                onClick={() => selectAttempt(attempt.id)}
-              >
-                <span className="shot-drawer__status">{attempt.status}</span>
-                <span className="shot-drawer__attempt-preview">
-                  {previewText(attempt.prompt_ko, 80)}
-                </span>
-                <time className="shot-drawer__attempt-date" dateTime={attempt.created_at}>
-                  {formatDate(attempt.created_at)}
-                </time>
-              </button>
+                attempt={attempt}
+                active={attempt.id === currentShot.active_attempt_id}
+                saving={saving === `attempt-${attempt.id}` || reviewSaving}
+                deleting={deletingAttemptId === attempt.id}
+                onUse={selectAttempt}
+                onReview={handleReviewAttempt}
+                onDelete={(attemptId) => { void handleDeleteAttempt(attemptId); }}
+              />
             ))}
           </div>
-        </section>
+          <div className="shot-drawer__subsection">
+            <h4 className="shot-drawer__subsection-title">Reference image</h4>
+            <AssetPicker
+              projectId={projectId}
+              shotId={currentShot.id}
+              onAttemptCreated={activateCreatedAttempt}
+            />
+          </div>
+        </DrawerSection>
 
-        <section className="shot-drawer__section" aria-labelledby="reference-image-heading">
-          <h3 id="reference-image-heading" className="shot-drawer__section-title">
-            Reference Image
-          </h3>
-          <AssetPicker
-            projectId={projectId}
-            shotId={currentShot.id}
-            onAttemptCreated={activateCreatedAttempt}
-          />
-        </section>
-
-        {/* Prompt Generation Section (EPR-15) */}
-        <section className="shot-drawer__section" aria-labelledby="prompt-gen-heading">
+        <DrawerSection
+          id="prompt"
+          title="Prompt"
+          open={openSections.prompt}
+          onToggle={toggleSection}
+        >
           <div className="shot-drawer__section-header">
-            <h3 id="prompt-gen-heading" className="shot-drawer__section-title">
-              Generate Prompt
-            </h3>
+            <h3 className="shot-drawer__section-title">Generate prompt</h3>
             <button
               type="button"
               className="shot-drawer__action"
@@ -671,29 +908,14 @@ export function ShotDrawer({
               </div>
             </form>
           )}
-        </section>
+        </DrawerSection>
 
-        <section className="shot-drawer__section" aria-labelledby="render-setup-heading">
-          <div className="shot-drawer__section-header">
-            <h3 id="render-setup-heading" className="shot-drawer__section-title">
-              Render Setup
-            </h3>
-            <button
-              type="button"
-              className="shot-drawer__action"
-              disabled={
-                renderSaving ||
-                !activeAttempt ||
-                !activeAttempt.workflow_template_id ||
-                !activeAttempt.execution_mode_id ||
-                activeWorkflowTemplate?.is_available === false
-              }
-              onClick={() => { void handleQueueRender(); }}
-            >
-              {renderSaving ? "Queueing..." : "Queue Render"}
-            </button>
-          </div>
-
+        <DrawerSection
+          id="render"
+          title="Render settings"
+          open={openSections.render}
+          onToggle={toggleSection}
+        >
           {activeAttempt === null ? (
             <p className="shot-drawer__empty">Select an attempt before rendering.</p>
           ) : (
@@ -755,7 +977,6 @@ export function ShotDrawer({
               ) : null}
 
               <div className="shot-drawer__footer">
-                {renderMessage ? <span className="shot-drawer__saved">{renderMessage}</span> : null}
                 <button
                   type="button"
                   className="shot-drawer__action shot-drawer__action--primary"
@@ -767,43 +988,14 @@ export function ShotDrawer({
               </div>
             </div>
           )}
+        </DrawerSection>
 
-          {renderError ? (
-            <p className="shot-drawer__error" role="alert">
-              {renderError}
-            </p>
-          ) : null}
-        </section>
-
-        {/* Status Actions (existing) */}
-        <section className="shot-drawer__section" aria-labelledby="status-actions-heading">
-          <h3 id="status-actions-heading" className="shot-drawer__section-title">
-            Status Actions
-          </h3>
-          <div className="shot-drawer__actions">
-            {(["Mark Ready", "Mark Redo", "Mark Rejected"] as const).map((label) => {
-              const value = label.replace("Mark ", "");
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  className="shot-drawer__button"
-                  onClick={() => markStatus(value)}
-                  disabled={saving === `status-${value}`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Review Section (EPR-18) */}
-        <section className="shot-drawer__review" aria-labelledby="review-section-title">
-          <h3 id="review-section-title" className="shot-drawer__section-title">
-            Review
-          </h3>
-
+        <DrawerSection
+          id="review"
+          title="Review"
+          open={openSections.review}
+          onToggle={toggleSection}
+        >
           <div className="shot-drawer__video-row">
             <button
               className="shot-drawer__btn shot-drawer__btn--play"
@@ -853,7 +1045,7 @@ export function ShotDrawer({
               value={reviewNote}
               onChange={(event) => setReviewNote(event.target.value)}
               rows={4}
-              placeholder="Add a review note…"
+              placeholder="Add a review note..."
               disabled={!activeAttempt}
             />
             <button
@@ -862,7 +1054,7 @@ export function ShotDrawer({
               disabled={reviewSaving || !activeAttempt}
               onClick={() => void handleSaveReviewWithNote()}
             >
-              {reviewSaving ? "Saving…" : "Save Note"}
+              {reviewSaving ? "Saving..." : "Save Note"}
             </button>
           </div>
 
@@ -871,7 +1063,7 @@ export function ShotDrawer({
               {reviewError}
             </p>
           ) : null}
-        </section>
+        </DrawerSection>
       </aside>
 
       <VideoPreviewModal
