@@ -39,10 +39,10 @@ export function WorkflowLibrary({ refreshKey = 0 }: WorkflowLibraryProps) {
     setMessage(null);
     try {
       const result = await bootstrapLtxLipSyncWorkflow();
-      setMessage(`${result.template.name} ready`);
+      setMessage(`${result.template.name} is ready in this project.`);
       await loadTemplates();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to add workflow");
+      setError(err instanceof Error ? err.message : "Failed to sync skill workflow");
     } finally {
       setSaving(false);
     }
@@ -65,7 +65,7 @@ export function WorkflowLibrary({ refreshKey = 0 }: WorkflowLibraryProps) {
             void handleBootstrap();
           }}
         >
-          {saving ? "Adding..." : "Add skill LTX workflow"}
+          {saving ? "Syncing..." : "Sync skill LTX workflow"}
         </button>
       </div>
 
