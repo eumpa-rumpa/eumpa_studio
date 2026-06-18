@@ -126,6 +126,19 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
   });
 }
 
+function maybeStudioSettingsResponse(url: string, init?: RequestInit) {
+  if (url === "/api/settings/prompt-system-default" && init?.method !== "PATCH") {
+    return Promise.resolve(
+      jsonResponse({
+        system_prompt: "Studio default system prompt",
+        is_custom: true,
+        updated_at: "2026-06-16T00:00:00Z",
+      }),
+    );
+  }
+  return null;
+}
+
 beforeEach(() => {
   vi.spyOn(window, "fetch").mockImplementation((input, init) => {
     const url =
@@ -188,6 +201,9 @@ beforeEach(() => {
       return Promise.resolve(new Response(null, { status: 204 }));
     }
 
+    const studioSettingsResponse = maybeStudioSettingsResponse(url, init);
+    if (studioSettingsResponse) return studioSettingsResponse;
+
     return Promise.reject(new Error(`Unhandled request: ${url}`));
   });
 });
@@ -235,6 +251,9 @@ describe("ShotDrawer asset attempts", () => {
         );
       }
 
+      const studioSettingsResponse = maybeStudioSettingsResponse(url, init);
+      if (studioSettingsResponse) return studioSettingsResponse;
+
       return Promise.reject(new Error(`Unhandled request: ${url}`));
     });
 
@@ -277,7 +296,7 @@ describe("ShotDrawer asset attempts", () => {
   });
 
   test("shows one editable prompt surface for the active attempt", async () => {
-    vi.mocked(window.fetch).mockImplementation((input) => {
+    vi.mocked(window.fetch).mockImplementation((input, init) => {
       const url =
         typeof input === "string"
           ? input
@@ -297,6 +316,9 @@ describe("ShotDrawer asset attempts", () => {
       if (url === "/api/workflows/templates/template-1/modes") {
         return Promise.resolve(jsonResponse([mode]));
       }
+
+      const studioSettingsResponse = maybeStudioSettingsResponse(url, init);
+      if (studioSettingsResponse) return studioSettingsResponse;
 
       return Promise.reject(new Error(`Unhandled request: ${url}`));
     });
@@ -384,6 +406,9 @@ describe("ShotDrawer asset attempts", () => {
         );
       }
 
+      const studioSettingsResponse = maybeStudioSettingsResponse(url, init);
+      if (studioSettingsResponse) return studioSettingsResponse;
+
       return Promise.reject(new Error(`Unhandled request: ${url}`));
     });
 
@@ -440,6 +465,9 @@ describe("ShotDrawer asset attempts", () => {
         return Promise.resolve(jsonResponse(renderJob, { status: 201 }));
       }
 
+      const studioSettingsResponse = maybeStudioSettingsResponse(url, init);
+      if (studioSettingsResponse) return studioSettingsResponse;
+
       return Promise.reject(new Error(`Unhandled request: ${url}`));
     });
 
@@ -468,7 +496,7 @@ describe("ShotDrawer asset attempts", () => {
   });
 
   test("explains why render cannot be queued", async () => {
-    vi.mocked(window.fetch).mockImplementation((input) => {
+    vi.mocked(window.fetch).mockImplementation((input, init) => {
       const url =
         typeof input === "string"
           ? input
@@ -485,6 +513,9 @@ describe("ShotDrawer asset attempts", () => {
       if (url === "/api/workflows/templates") {
         return Promise.resolve(jsonResponse([template]));
       }
+
+      const studioSettingsResponse = maybeStudioSettingsResponse(url, init);
+      if (studioSettingsResponse) return studioSettingsResponse;
 
       return Promise.reject(new Error(`Unhandled request: ${url}`));
     });
@@ -557,6 +588,9 @@ describe("ShotDrawer asset attempts", () => {
         return Promise.resolve(new Response(null, { status: 204 }));
       }
 
+      const studioSettingsResponse = maybeStudioSettingsResponse(url, init);
+      if (studioSettingsResponse) return studioSettingsResponse;
+
       return Promise.reject(new Error(`Unhandled request: ${url}`));
     });
 
@@ -618,6 +652,9 @@ describe("ShotDrawer asset attempts", () => {
         return Promise.resolve(jsonResponse([template]));
       }
 
+      const studioSettingsResponse = maybeStudioSettingsResponse(url, init);
+      if (studioSettingsResponse) return studioSettingsResponse;
+
       return Promise.reject(new Error(`Unhandled request: ${url}`));
     });
 
@@ -671,7 +708,7 @@ describe("ShotDrawer asset attempts", () => {
       created_at: "2026-06-16T02:00:00Z",
     };
 
-    vi.mocked(window.fetch).mockImplementation((input) => {
+    vi.mocked(window.fetch).mockImplementation((input, init) => {
       const url =
         typeof input === "string"
           ? input
@@ -691,6 +728,9 @@ describe("ShotDrawer asset attempts", () => {
       if (url === "/api/workflows/templates/template-1/modes") {
         return Promise.resolve(jsonResponse([mode]));
       }
+
+      const studioSettingsResponse = maybeStudioSettingsResponse(url, init);
+      if (studioSettingsResponse) return studioSettingsResponse;
 
       return Promise.reject(new Error(`Unhandled request: ${url}`));
     });
@@ -756,6 +796,9 @@ describe("ShotDrawer asset attempts", () => {
           }),
         );
       }
+
+      const studioSettingsResponse = maybeStudioSettingsResponse(url, init);
+      if (studioSettingsResponse) return studioSettingsResponse;
 
       return Promise.reject(new Error(`Unhandled request: ${url}`));
     });
@@ -828,6 +871,143 @@ describe("ShotDrawer asset attempts", () => {
     );
   });
 
+  test("loads the studio-wide system prompt default into the attempt editor", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(window.fetch).mockImplementation((input, init) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      if (url === "/api/settings/prompt-system-default") {
+        return Promise.resolve(
+          jsonResponse({
+            system_prompt: "Studio-wide saved LTX direction",
+            is_custom: true,
+            updated_at: "2026-06-16T00:00:00Z",
+          }),
+        );
+      }
+      if (url === "/api/shots/shot-1/attempts") {
+        return Promise.resolve(jsonResponse([configuredAttempt]));
+      }
+      if (url === "/api/assets/project-1") {
+        return Promise.resolve(jsonResponse([asset]));
+      }
+      if (url === "/api/workflows/templates") {
+        return Promise.resolve(jsonResponse([template]));
+      }
+      if (url === "/api/workflows/templates/template-1/modes") {
+        return Promise.resolve(jsonResponse([mode]));
+      }
+
+      const studioSettingsResponse = maybeStudioSettingsResponse(url, init);
+      if (studioSettingsResponse) return studioSettingsResponse;
+
+      return Promise.reject(new Error(`Unhandled request: ${url}`));
+    });
+
+    render(
+      <ShotDrawer
+        shot={{
+          ...shot,
+          active_attempt_id: "attempt-1",
+          active_attempt: configuredAttempt,
+          attempt_count: 1,
+        }}
+        projectId="project-1"
+        onClose={() => {}}
+        onShotUpdated={() => {}}
+      />,
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: "Edit system prompt for attempt attempt-1" }),
+    );
+
+    expect(
+      await screen.findByRole("textbox", { name: "System prompt for attempt attempt-1" }),
+    ).toHaveValue("Studio-wide saved LTX direction");
+  });
+
+  test("saves the current system prompt as the studio-wide default", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(window.fetch).mockImplementation((input, init) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      if (url === "/api/shots/shot-1/attempts") {
+        return Promise.resolve(jsonResponse([configuredAttempt]));
+      }
+      if (url === "/api/assets/project-1") {
+        return Promise.resolve(jsonResponse([asset]));
+      }
+      if (url === "/api/workflows/templates") {
+        return Promise.resolve(jsonResponse([template]));
+      }
+      if (url === "/api/workflows/templates/template-1/modes") {
+        return Promise.resolve(jsonResponse([mode]));
+      }
+      if (url === "/api/settings/prompt-system-default" && init?.method === "PATCH") {
+        return Promise.resolve(
+          jsonResponse({
+            system_prompt: "Saved studio system prompt",
+            is_custom: true,
+            updated_at: "2026-06-16T01:00:00Z",
+          }),
+        );
+      }
+
+      const studioSettingsResponse = maybeStudioSettingsResponse(url, init);
+      if (studioSettingsResponse) return studioSettingsResponse;
+
+      return Promise.reject(new Error(`Unhandled request: ${url}`));
+    });
+
+    render(
+      <ShotDrawer
+        shot={{
+          ...shot,
+          active_attempt_id: "attempt-1",
+          active_attempt: configuredAttempt,
+          attempt_count: 1,
+        }}
+        projectId="project-1"
+        onClose={() => {}}
+        onShotUpdated={() => {}}
+      />,
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: "Edit system prompt for attempt attempt-1" }),
+    );
+    await user.clear(screen.getByRole("textbox", { name: "System prompt for attempt attempt-1" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "System prompt for attempt attempt-1" }),
+      "Saved studio system prompt",
+    );
+    await user.click(screen.getByRole("button", { name: "Save as studio default for attempt attempt-1" }));
+
+    await waitFor(() => {
+      expect(window.fetch).toHaveBeenCalledWith(
+        "/api/settings/prompt-system-default",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ system_prompt: "Saved studio system prompt" }),
+        }),
+      );
+    });
+    expect(await screen.findByText("Studio default saved")).toBeInTheDocument();
+  });
+
   test("sends shot note and editable system prompt when generating a prompt", async () => {
     const user = userEvent.setup();
 
@@ -868,6 +1048,9 @@ describe("ShotDrawer asset attempts", () => {
           }),
         );
       }
+
+      const studioSettingsResponse = maybeStudioSettingsResponse(url, init);
+      if (studioSettingsResponse) return studioSettingsResponse;
 
       return Promise.reject(new Error(`Unhandled request: ${url}`));
     });
@@ -966,6 +1149,9 @@ describe("ShotDrawer asset attempts", () => {
       ) {
         return Promise.resolve(jsonResponse(duplicatedAttempt, { status: 201 }));
       }
+
+      const studioSettingsResponse = maybeStudioSettingsResponse(url, init);
+      if (studioSettingsResponse) return studioSettingsResponse;
 
       return Promise.reject(new Error(`Unhandled request: ${url}`));
     });

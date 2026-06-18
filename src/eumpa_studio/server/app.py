@@ -11,6 +11,7 @@ from eumpa_studio.server.routes.assets import router as assets_router
 from eumpa_studio.server.routes.workflows import router as workflows_router
 from eumpa_studio.server.routes.prompts import router as prompts_router
 from eumpa_studio.server.routes.export import router as export_router
+from eumpa_studio.server.routes.settings import router as settings_router
 
 app = FastAPI(title="eumpa_studio", version="0.1.0")
 
@@ -30,3 +31,4 @@ app.include_router(assets_router, prefix="/api")
 app.include_router(workflows_router, prefix="/api")
 app.include_router(prompts_router, prefix="/api")
 app.include_router(export_router, prefix="/api")
+app.include_router(settings_router, prefix="/api")

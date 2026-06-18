@@ -6,10 +6,12 @@ import {
   duplicateAttempt,
   enqueueRender,
   fetchExecutionModes,
+  fetchPromptSystemDefault,
   fetchShotAttempts,
   fetchWorkflowTemplates,
   generatePrompt as generatePromptRequest,
   savePrompt as saveAttemptRequest,
+  savePromptSystemDefault,
   updateShot,
 } from "../api/client";
 import type { Asset, Attempt, ExecutionMode, Shot, WorkflowTemplate } from "../api/types";
@@ -333,8 +335,13 @@ export function ShotDrawer({
   const [promptKo, setPromptKo] = useState("");
   const [promptEn, setPromptEn] = useState("");
   const [shotNoteSnapshot, setShotNoteSnapshot] = useState("");
+  const [studioSystemPrompt, setStudioSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [systemPromptOpen, setSystemPromptOpen] = useState(false);
+  const [systemPromptDefaultLoading, setSystemPromptDefaultLoading] = useState(false);
+  const [systemPromptDefaultSaving, setSystemPromptDefaultSaving] = useState(false);
+  const [systemPromptDefaultMessage, setSystemPromptDefaultMessage] = useState<string | null>(null);
+  const [systemPromptDefaultError, setSystemPromptDefaultError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [promptSaving, setPromptSaving] = useState(false);
   const [promptError, setPromptError] = useState<string | null>(null);
@@ -411,6 +418,38 @@ export function ShotDrawer({
   }, [shot]);
 
   useEffect(() => {
+    let cancelled = false;
+    setSystemPromptDefaultLoading(true);
+    setSystemPromptDefaultError(null);
+
+    fetchPromptSystemDefault()
+      .then((setting) => {
+        if (!cancelled) {
+          setStudioSystemPrompt(setting.system_prompt);
+          setSystemPrompt((current) =>
+            current === DEFAULT_SYSTEM_PROMPT ? setting.system_prompt : current,
+          );
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setSystemPromptDefaultError(
+            err instanceof Error ? err.message : "Failed to load studio system prompt",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setSystemPromptDefaultLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!shot) {
       setAttempts([]);
       setExpandedAttemptId(null);
@@ -451,8 +490,7 @@ export function ShotDrawer({
     setPromptKo(expandedAttempt?.prompt_ko ?? "");
     setPromptEn(expandedAttempt?.prompt_en ?? "");
     setShotNoteSnapshot(expandedAttempt?.shot_note_snapshot ?? currentShot?.shot_note ?? "");
-    setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
-    setSystemPromptOpen(false);
+    setSystemPrompt(studioSystemPrompt);
     setSavedMessage(null);
     setPromptError(null);
     setReviewStatus(null);
@@ -472,7 +510,14 @@ export function ShotDrawer({
     expandedAttempt?.workflow_template_id,
     expandedAttempt?.execution_mode_id,
     currentShot?.shot_note,
+    studioSystemPrompt,
   ]);
+
+  useEffect(() => {
+    setSystemPromptOpen(false);
+    setSystemPromptDefaultMessage(null);
+    setSystemPromptDefaultError(null);
+  }, [expandedAttempt?.id]);
 
   useEffect(() => {
     if (!expandedAttempt) {
@@ -719,6 +764,25 @@ export function ShotDrawer({
     }
   }
 
+  async function handleSaveSystemPromptDefault() {
+    if (expandedAttempt?.output_metadata) return;
+    setSystemPromptDefaultSaving(true);
+    setSystemPromptDefaultMessage(null);
+    setSystemPromptDefaultError(null);
+    try {
+      const setting = await savePromptSystemDefault(systemPrompt);
+      setStudioSystemPrompt(setting.system_prompt);
+      setSystemPrompt(setting.system_prompt);
+      setSystemPromptDefaultMessage("Studio default saved");
+    } catch (err: unknown) {
+      setSystemPromptDefaultError(
+        err instanceof Error ? err.message : "Failed to save studio system prompt",
+      );
+    } finally {
+      setSystemPromptDefaultSaving(false);
+    }
+  }
+
   async function handlePlayVideo() {
     if (!currentShot || !expandedAttempt) return;
     setVideoError(null);
@@ -958,17 +1022,47 @@ export function ShotDrawer({
                 {systemPromptOpen ? "Hide system prompt" : "Edit system prompt"}
               </button>
               {systemPromptOpen ? (
-                <label className="shot-drawer__field" htmlFor={`system-prompt-${idSuffix}`}>
-                  <span>System prompt</span>
-                  <textarea
-                    id={`system-prompt-${idSuffix}`}
-                    aria-label={`System prompt for attempt ${attempt.id}`}
-                    value={systemPrompt}
-                    onChange={(event) => setSystemPrompt(event.target.value)}
-                    rows={5}
-                    disabled={locked}
-                  />
-                </label>
+                <>
+                  <label className="shot-drawer__field" htmlFor={`system-prompt-${idSuffix}`}>
+                    <span>System prompt</span>
+                    <textarea
+                      id={`system-prompt-${idSuffix}`}
+                      aria-label={`System prompt for attempt ${attempt.id}`}
+                      value={systemPrompt}
+                      onChange={(event) => {
+                        setSystemPrompt(event.target.value);
+                        setSystemPromptDefaultMessage(null);
+                        setSystemPromptDefaultError(null);
+                      }}
+                      rows={5}
+                      disabled={locked}
+                    />
+                  </label>
+                  <div className="shot-drawer__footer">
+                    {systemPromptDefaultLoading ? (
+                      <span className="shot-drawer__muted">Loading studio default...</span>
+                    ) : null}
+                    {systemPromptDefaultMessage ? (
+                      <span className="shot-drawer__saved">{systemPromptDefaultMessage}</span>
+                    ) : null}
+                    {systemPromptDefaultError ? (
+                      <span className="shot-drawer__error" role="alert">
+                        {systemPromptDefaultError}
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="shot-drawer__btn"
+                      aria-label={`Save as studio default for attempt ${attempt.id}`}
+                      disabled={locked || systemPromptDefaultSaving || systemPrompt.trim().length === 0}
+                      onClick={() => {
+                        void handleSaveSystemPromptDefault();
+                      }}
+                    >
+                      {systemPromptDefaultSaving ? "Saving default..." : "Save as studio default"}
+                    </button>
+                  </div>
+                </>
               ) : null}
             </div>
 

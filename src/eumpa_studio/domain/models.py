@@ -176,6 +176,18 @@ class Asset(Base):
     project: Mapped["Project"] = relationship("Project", back_populates="assets")
 
 
+class StudioSetting(Base):
+    __tablename__ = "studio_settings"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=func.now(), nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 class WorkflowTemplate(Base):
     __tablename__ = "workflow_templates"
 
