@@ -295,6 +295,32 @@ def test_update_attempt_image_fields(api_client: TestClient, db_session):
     assert body["image_storage_backend"] == "local"
     assert body["image_relative_path"] == "projects/project-1/assets/reference.png"
 
+    end_response = api_client.patch(
+        f"/api/shots/{shot.id}/attempts/{attempt.id}",
+        json={
+            "end_image_storage_backend": "local",
+            "end_image_relative_path": "projects/project-1/assets/end.png",
+        },
+    )
+
+    assert end_response.status_code == 200
+    end_body = end_response.json()
+    assert end_body["end_image_storage_backend"] == "local"
+    assert end_body["end_image_relative_path"] == "projects/project-1/assets/end.png"
+
+    clear_response = api_client.patch(
+        f"/api/shots/{shot.id}/attempts/{attempt.id}",
+        json={
+            "end_image_storage_backend": None,
+            "end_image_relative_path": None,
+        },
+    )
+
+    assert clear_response.status_code == 200
+    clear_body = clear_response.json()
+    assert clear_body["end_image_storage_backend"] is None
+    assert clear_body["end_image_relative_path"] is None
+
 
 def test_duplicate_rendered_attempt_copies_inputs_and_clears_outputs(
     api_client: TestClient,

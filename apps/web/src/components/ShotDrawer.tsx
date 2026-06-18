@@ -27,6 +27,14 @@ interface ShotDrawerProps {
 const BASE_URL = "/api";
 
 type ReviewStatus = "Selected" | "Redo" | "Rejected";
+type ImageRole = "start" | "end";
+
+const DEFAULT_SYSTEM_PROMPT = [
+  "Generate production-ready LTX image-to-video prompts for a music video shot.",
+  "Use the shot note, lyrics, visual bible, and reference image roles.",
+  "Preserve subject identity from the start image, use the optional end image as the target ending state, and describe motion, camera, staging, and lip-sync direction clearly.",
+  "Return concise Korean and English prompts suitable for ComfyUI LTX rendering.",
+].join(" ");
 
 function formatSeconds(value: number): string {
   return value.toFixed(1).replace(/\.0$/, "");
@@ -49,7 +57,8 @@ function previewText(value: string | null, maxLength: number): string {
 
 function filenameFromPath(value: string | null): string {
   if (!value) return "No reference image";
-  return value.split("/").filter(Boolean).at(-1) ?? value;
+  const parts = value.split("/").filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : value;
 }
 
 function parseRequiredInputs(mode: ExecutionMode | null): string[] {
@@ -323,6 +332,9 @@ export function ShotDrawer({
 
   const [promptKo, setPromptKo] = useState("");
   const [promptEn, setPromptEn] = useState("");
+  const [shotNoteSnapshot, setShotNoteSnapshot] = useState("");
+  const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
+  const [systemPromptOpen, setSystemPromptOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [promptSaving, setPromptSaving] = useState(false);
   const [promptError, setPromptError] = useState<string | null>(null);
@@ -348,12 +360,9 @@ export function ShotDrawer({
   }, [attempts, currentShot?.active_attempt_id]);
 
   const expandedAttempt = useMemo(() => {
-    if (expandedAttemptId) {
-      const attempt = attempts.find((item) => item.id === expandedAttemptId);
-      if (attempt) return attempt;
-    }
-    return activeAttempt ?? attempts[0] ?? null;
-  }, [activeAttempt, attempts, expandedAttemptId]);
+    if (!expandedAttemptId) return null;
+    return attempts.find((item) => item.id === expandedAttemptId) ?? null;
+  }, [attempts, expandedAttemptId]);
 
   const selectedWorkflowTemplate = useMemo(
     () =>
@@ -416,7 +425,8 @@ export function ShotDrawer({
       .then((data) => {
         if (!cancelled) {
           setAttempts(data);
-          setExpandedAttemptId(shot.active_attempt_id ?? data[0]?.id ?? null);
+          const latestAttempt = data.length > 0 ? data[data.length - 1] : null;
+          setExpandedAttemptId(shot.active_attempt_id ?? latestAttempt?.id ?? null);
         }
       })
       .catch((err: unknown) => {
@@ -440,6 +450,9 @@ export function ShotDrawer({
     setReviewNote(expandedAttempt?.review_note ?? "");
     setPromptKo(expandedAttempt?.prompt_ko ?? "");
     setPromptEn(expandedAttempt?.prompt_en ?? "");
+    setShotNoteSnapshot(expandedAttempt?.shot_note_snapshot ?? currentShot?.shot_note ?? "");
+    setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
+    setSystemPromptOpen(false);
     setSavedMessage(null);
     setPromptError(null);
     setReviewStatus(null);
@@ -455,8 +468,10 @@ export function ShotDrawer({
     expandedAttempt?.prompt_ko,
     expandedAttempt?.prompt_en,
     expandedAttempt?.review_note,
+    expandedAttempt?.shot_note_snapshot,
     expandedAttempt?.workflow_template_id,
     expandedAttempt?.execution_mode_id,
+    currentShot?.shot_note,
   ]);
 
   useEffect(() => {
@@ -614,15 +629,24 @@ export function ShotDrawer({
     }
   }
 
-  async function handleAssetSelectedForAttempt(attempt: Attempt, asset: Asset) {
+  async function handleAssetSelectedForAttempt(attempt: Attempt, asset: Asset, role: ImageRole) {
     if (!currentShot || attempt.output_metadata) return;
-    setSaving(`asset-${attempt.id}`);
+    setSaving(`asset-${role}-${attempt.id}`);
     setError(null);
     try {
-      const updated = await saveAttemptRequest(currentShot.id, attempt.id, {
-        image_storage_backend: asset.storage_backend,
-        image_relative_path: asset.relative_path,
-      });
+      const updated = await saveAttemptRequest(
+        currentShot.id,
+        attempt.id,
+        role === "start"
+          ? {
+              image_storage_backend: asset.storage_backend,
+              image_relative_path: asset.relative_path,
+            }
+          : {
+              end_image_storage_backend: asset.storage_backend,
+              end_image_relative_path: asset.relative_path,
+            },
+      );
       upsertAttempt(updated);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to update reference image");
@@ -631,15 +655,41 @@ export function ShotDrawer({
     }
   }
 
+  async function handleClearEndImage(attempt: Attempt) {
+    if (!currentShot || attempt.output_metadata) return;
+    setSaving(`asset-end-${attempt.id}`);
+    setError(null);
+    try {
+      const updated = await saveAttemptRequest(currentShot.id, attempt.id, {
+        end_image_storage_backend: null,
+        end_image_relative_path: null,
+      });
+      upsertAttempt(updated);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to clear end image");
+    } finally {
+      setSaving(null);
+    }
+  }
+
   async function handleGenerate() {
-    if (!expandedAttempt || expandedAttempt.output_metadata) return;
+    if (!currentShot || !expandedAttempt || expandedAttempt.output_metadata) return;
     setPromptError(null);
     setSavedMessage(null);
     setGenerating(true);
     try {
-      const updated = await generatePromptRequest(expandedAttempt.id);
+      const savedAttempt = await saveAttemptRequest(currentShot.id, expandedAttempt.id, {
+        shot_note_snapshot: shotNoteSnapshot,
+        prompt_ko: promptKo,
+        prompt_en: promptEn,
+      });
+      upsertAttempt(savedAttempt);
+      const updated = await generatePromptRequest(savedAttempt.id, {
+        system_prompt: systemPrompt,
+      });
       setPromptKo(updated.prompt_ko ?? "");
       setPromptEn(updated.prompt_en ?? "");
+      setShotNoteSnapshot(updated.shot_note_snapshot ?? shotNoteSnapshot);
       upsertAttempt(updated);
     } catch (err: unknown) {
       setPromptError(err instanceof Error ? err.message : "Failed to generate prompt");
@@ -656,6 +706,7 @@ export function ShotDrawer({
     setPromptSaving(true);
     try {
       const updated = await saveAttemptRequest(currentShot.id, expandedAttempt.id, {
+        shot_note_snapshot: shotNoteSnapshot,
         prompt_ko: promptKo,
         prompt_en: promptEn,
       });
@@ -797,6 +848,7 @@ export function ShotDrawer({
   }
 
   function renderAttemptEditor(attempt: Attempt) {
+    if (!currentShot) return null;
     const locked = Boolean(attempt.output_metadata);
     const idSuffix = attempt.id;
     return (
@@ -809,20 +861,59 @@ export function ShotDrawer({
 
         <div className="shot-drawer__editor-block">
           <div className="shot-drawer__editor-heading">
-            <h4>Reference image</h4>
-            <span>{filenameFromPath(attempt.image_relative_path)}</span>
+            <h4>Reference images</h4>
+            <span>Start required, end optional</span>
           </div>
-          {locked ? null : (
-            <AssetPicker
-              projectId={projectId}
-              shotId={currentShot.id}
-              showCreateAttempt={false}
-              selectLabel={(asset) => `Select asset ${asset.name} for attempt ${attempt.id}`}
-              onAssetSelected={(asset) => {
-                void handleAssetSelectedForAttempt(attempt, asset);
-              }}
-            />
-          )}
+          <div className="shot-drawer__image-slots">
+            <div className="shot-drawer__image-slot">
+              <div className="shot-drawer__editor-heading">
+                <strong>Start image</strong>
+                <span>{filenameFromPath(attempt.image_relative_path)}</span>
+              </div>
+              {locked ? null : (
+                <AssetPicker
+                  projectId={projectId}
+                  shotId={currentShot.id}
+                  showCreateAttempt={false}
+                  selectLabel={(asset) => `Select start image ${asset.name} for attempt ${attempt.id}`}
+                  onAssetSelected={(asset) => {
+                    void handleAssetSelectedForAttempt(attempt, asset, "start");
+                  }}
+                />
+              )}
+            </div>
+
+            <div className="shot-drawer__image-slot">
+              <div className="shot-drawer__editor-heading">
+                <strong>End image</strong>
+                <span>{filenameFromPath(attempt.end_image_relative_path)}</span>
+              </div>
+              {locked ? null : (
+                <>
+                  <AssetPicker
+                    projectId={projectId}
+                    shotId={currentShot.id}
+                    showCreateAttempt={false}
+                    selectLabel={(asset) => `Select end image ${asset.name} for attempt ${attempt.id}`}
+                    onAssetSelected={(asset) => {
+                      void handleAssetSelectedForAttempt(attempt, asset, "end");
+                    }}
+                  />
+                  {attempt.end_image_relative_path ? (
+                    <button
+                      type="button"
+                      className="shot-drawer__btn"
+                      aria-label={`Clear end image for attempt ${attempt.id}`}
+                      disabled={saving === `asset-end-${attempt.id}`}
+                      onClick={() => { void handleClearEndImage(attempt); }}
+                    >
+                      Clear end image
+                    </button>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="shot-drawer__editor-block">
@@ -832,6 +923,7 @@ export function ShotDrawer({
               type="button"
               className="shot-drawer__action"
               disabled={locked || generating}
+              aria-label={`Generate prompt for attempt ${attempt.id}`}
               onClick={() => {
                 void handleGenerate();
               }}
@@ -843,6 +935,43 @@ export function ShotDrawer({
           {promptError ? <p className="shot-drawer__error">{promptError}</p> : null}
 
           <form className="shot-drawer__prompt-form" onSubmit={(event) => { void handleSavePrompt(event); }}>
+            <label className="shot-drawer__field" htmlFor={`shot-note-snapshot-${idSuffix}`}>
+              <span>Shot note for prompt</span>
+              <textarea
+                id={`shot-note-snapshot-${idSuffix}`}
+                aria-label={`Shot note for prompt for attempt ${attempt.id}`}
+                value={shotNoteSnapshot}
+                onChange={(event) => setShotNoteSnapshot(event.target.value)}
+                rows={4}
+                disabled={locked}
+              />
+            </label>
+
+            <div className="shot-drawer__system-prompt">
+              <button
+                type="button"
+                className="shot-drawer__btn"
+                aria-expanded={systemPromptOpen}
+                aria-label={`${systemPromptOpen ? "Hide" : "Edit"} system prompt for attempt ${attempt.id}`}
+                onClick={() => setSystemPromptOpen((open) => !open)}
+              >
+                {systemPromptOpen ? "Hide system prompt" : "Edit system prompt"}
+              </button>
+              {systemPromptOpen ? (
+                <label className="shot-drawer__field" htmlFor={`system-prompt-${idSuffix}`}>
+                  <span>System prompt</span>
+                  <textarea
+                    id={`system-prompt-${idSuffix}`}
+                    aria-label={`System prompt for attempt ${attempt.id}`}
+                    value={systemPrompt}
+                    onChange={(event) => setSystemPrompt(event.target.value)}
+                    rows={5}
+                    disabled={locked}
+                  />
+                </label>
+              ) : null}
+            </div>
+
             <label className="shot-drawer__field" htmlFor={`prompt-ko-${idSuffix}`}>
               <span>Korean prompt</span>
               <textarea
@@ -1154,7 +1283,8 @@ export function ShotDrawer({
                 saving={
                   saving === `attempt-${attempt.id}` ||
                   saving === `duplicate-${attempt.id}` ||
-                  saving === `asset-${attempt.id}` ||
+                  saving === `asset-start-${attempt.id}` ||
+                  saving === `asset-end-${attempt.id}` ||
                   reviewSaving
                 }
                 deleting={deletingAttemptId === attempt.id}

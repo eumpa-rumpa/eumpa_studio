@@ -22,15 +22,33 @@ AppSettings = Annotated[Settings, Depends(get_settings_dep)]
 
 class GeneratePromptRequest(BaseModel):
     attempt_id: str
+    system_prompt: str | None = None
 
 
 class AttemptRead(BaseModel):
     id: str
     shot_id: str
+    parent_attempt_id: str | None
+    image_storage_backend: str | None
+    image_relative_path: str | None
+    end_image_storage_backend: str | None
+    end_image_relative_path: str | None
+    input_video_storage_backend: str | None
+    input_video_relative_path: str | None
+    shot_note_snapshot: str | None
     status: str
     prompt_ko: str | None
     prompt_en: str | None
+    workflow_template_id: str | None
+    execution_mode_id: str | None
+    param_overrides: str | None
+    seed: int | None
+    workflow_snapshot: str | None
+    comfyui_prompt_id: str | None
+    output_metadata: str | None
+    review_note: str | None
     created_at: datetime.datetime
+    updated_at: datetime.datetime
 
     model_config = {"from_attributes": True}
 
@@ -60,6 +78,11 @@ def generate_prompt(
             if attempt.image_relative_path
             else None
         )
+        end_image_path = (
+            str(settings.data_root / attempt.end_image_relative_path)
+            if attempt.end_image_relative_path
+            else None
+        )
         shot_note = attempt.shot_note_snapshot or shot.shot_note
         ctx = PromptContext(
             lyrics=shot.lyrics_text,
@@ -72,6 +95,8 @@ def generate_prompt(
                 f"Previous attempt: {attempt.prompt_ko}" if attempt.prompt_ko else None
             ),
             image_path=image_path,
+            end_image_path=end_image_path,
+            system_prompt=body.system_prompt,
         )
 
         result = run_codex_prompt(ctx, settings.codex_cli_path)

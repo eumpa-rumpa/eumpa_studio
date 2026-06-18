@@ -199,8 +199,18 @@ export async function createProject(formData: FormData): Promise<Project> {
   return response.json() as Promise<Project>;
 }
 
-export async function generatePrompt(attemptId: string): Promise<Attempt> {
-  return postJson<Attempt>("/prompts/generate", { attempt_id: attemptId });
+export interface GeneratePromptBody {
+  system_prompt?: string | null;
+}
+
+export async function generatePrompt(
+  attemptId: string,
+  body: GeneratePromptBody = {},
+): Promise<Attempt> {
+  return postJson<Attempt>("/prompts/generate", {
+    attempt_id: attemptId,
+    ...body,
+  });
 }
 
 export interface SavePromptBody {

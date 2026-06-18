@@ -187,10 +187,25 @@ describe("App workspace flow", () => {
     expect(screen.getByRole("button", { name: "Add manual shot" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Workflow Library" })).toBeInTheDocument();
     expect(screen.getByText("Skill default LTX lip-sync")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sync skill LTX workflow" })).toBeInTheDocument();
     expect(screen.getByText("Use alignment for a lyric-based pass, or add a manual shot when you want to block scenes yourself.")).toBeInTheDocument();
 
     const pendingJob = await screen.findByLabelText("Pending job: align project-1");
     expect(pendingJob).toHaveTextContent("align");
     expect(pendingJob).toHaveTextContent("project-1");
+  });
+
+  test("syncs the bundled skill workflow with clear feedback", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem("eumpa-studio:selected-project-id", "project-1");
+
+    render(<App />);
+
+    const syncButton = await screen.findByRole("button", { name: "Sync skill LTX workflow" });
+    await user.click(syncButton);
+
+    expect(
+      await screen.findByText("Skill default LTX lip-sync is ready in this project."),
+    ).toBeInTheDocument();
   });
 });

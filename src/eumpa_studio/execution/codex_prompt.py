@@ -8,6 +8,16 @@ from dataclasses import dataclass
 from typing import Any
 
 
+DEFAULT_SYSTEM_PROMPT = (
+    "Generate production-ready LTX image-to-video prompts for a music video shot. "
+    "Use the shot note, lyrics, visual bible, and reference image roles. "
+    "Preserve subject identity from the start image, use the optional end image as "
+    "the target ending state, and describe motion, camera, staging, and lip-sync "
+    "direction clearly. Return concise Korean and English prompts suitable for "
+    "ComfyUI LTX rendering."
+)
+
+
 @dataclass
 class PromptContext:
     lyrics: str | None
@@ -18,6 +28,8 @@ class PromptContext:
     visual_bible: str | None
     prior_attempt_context: str | None
     image_path: str | None
+    end_image_path: str | None = None
+    system_prompt: str | None = None
 
 
 @dataclass
@@ -46,15 +58,14 @@ def build_prompt_text(ctx: PromptContext) -> str:
     """Build the text prompt passed to Codex CLI."""
     sections = [
         "# LTX Prompt Generation Request",
-        (
-            "Generate prompts for LTX video generation. "
-            "Be specific about motion and camera."
-        ),
+        _section("System Prompt", ctx.system_prompt or DEFAULT_SYSTEM_PROMPT),
         _section("Time Range", f"{ctx.start_time:.3f}s - {ctx.end_time:.3f}s"),
         _section("Visual Bible", ctx.visual_bible),
         _section("Lyrics", ctx.lyrics),
         _section("Speaker", ctx.speaker),
         _section("Shot Note", ctx.shot_note),
+        _section("Start Image", ctx.image_path),
+        _section("End Image", ctx.end_image_path),
         _section("Prior Attempt Context", ctx.prior_attempt_context),
         (
             "Return only valid JSON with required keys: "
@@ -107,6 +118,8 @@ def run_codex_prompt(
     ]
     if ctx.image_path:
         args.extend(["--image", ctx.image_path])
+    if ctx.end_image_path:
+        args.extend(["--image", ctx.end_image_path])
 
     try:
         completed = subprocess.run(
