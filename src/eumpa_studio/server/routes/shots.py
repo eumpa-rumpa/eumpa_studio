@@ -99,11 +99,32 @@ class ShotUpdate(BaseModel):
 
 
 class AttemptUpdate(BaseModel):
+    image_storage_backend: str | None = None
+    image_relative_path: str | None = None
+    end_image_storage_backend: str | None = None
+    end_image_relative_path: str | None = None
+    input_video_storage_backend: str | None = None
+    input_video_relative_path: str | None = None
+    shot_note_snapshot: str | None = None
     prompt_ko: str | None = None
     prompt_en: str | None = None
     workflow_template_id: str | None = None
     execution_mode_id: str | None = None
+    param_overrides: str | None = None
+    seed: int | None = None
     review_note: str | None = None
+
+
+class AttemptCreate(BaseModel):
+    image_storage_backend: str | None = None
+    image_relative_path: str | None = None
+    shot_note_snapshot: str | None = None
+    prompt_ko: str | None = None
+    prompt_en: str | None = None
+    workflow_template_id: str | None = None
+    execution_mode_id: str | None = None
+    param_overrides: str | None = None
+    seed: int | None = None
 
 
 DbSession = Annotated[Session, Depends(get_session)]
@@ -116,6 +137,22 @@ _REVIEW_STATUSES = {
     AttemptStatus.REDO.value,
     AttemptStatus.REJECTED.value,
     AttemptStatus.FAILED.value,
+}
+
+_RENDER_INPUT_FIELDS = {
+    "image_storage_backend",
+    "image_relative_path",
+    "end_image_storage_backend",
+    "end_image_relative_path",
+    "input_video_storage_backend",
+    "input_video_relative_path",
+    "shot_note_snapshot",
+    "prompt_ko",
+    "prompt_en",
+    "workflow_template_id",
+    "execution_mode_id",
+    "param_overrides",
+    "seed",
 }
 
 
@@ -215,6 +252,16 @@ def _validate_attempt_workflow_config(
         )
 
 
+def _reject_rendered_input_mutation(attempt: Attempt, update_data: dict[str, object]) -> None:
+    if not attempt.output_metadata:
+        return
+    if _RENDER_INPUT_FIELDS.intersection(update_data):
+        raise HTTPException(
+            status_code=422,
+            detail="Duplicate rendered attempts before changing inputs",
+        )
+
+
 def _read_shot(db: Session, shot: Shot) -> ShotRead:
     counts = _attempt_counts(db, [shot.id])
     return _serialize_shot(shot, counts.get(shot.id, 0))
@@ -255,6 +302,31 @@ def list_shot_attempts(shot_id: str, db: DbSession) -> list[AttemptRead]:
     return [AttemptRead.model_validate(attempt) for attempt in attempts]
 
 
+@router.post("/shots/{shot_id}/attempts", response_model=AttemptRead, status_code=201)
+def create_attempt(shot_id: str, body: AttemptCreate, db: DbSession) -> AttemptRead:
+    """Create an editable attempt draft for a shot and make it active."""
+    shot = _get_shot_with_active_attempt(db, shot_id)
+    create_data = body.model_dump(exclude_unset=True)
+    _validate_attempt_workflow_config(
+        db,
+        create_data.get("workflow_template_id"),
+        create_data.get("execution_mode_id"),
+    )
+
+    attempt = Attempt(
+        shot_id=shot.id,
+        status=AttemptStatus.NEEDS_INPUT.value,
+        **create_data,
+    )
+    db.add(attempt)
+    db.flush()
+    shot.active_attempt_id = attempt.id
+    shot.status = ShotStatus.NEEDS_INPUT.value
+    db.commit()
+    db.refresh(attempt)
+    return AttemptRead.model_validate(attempt)
+
+
 @router.patch("/shots/{shot_id}", response_model=ShotRead)
 def update_shot(shot_id: str, body: ShotUpdate, db: DbSession) -> ShotRead:
     """Update editable shot fields."""
@@ -286,6 +358,7 @@ def update_shot_attempt(
     _get_shot_with_active_attempt(db, shot_id)
     attempt = _get_attempt_for_shot(db, shot_id, attempt_id)
     update_data = body.model_dump(exclude_unset=True)
+    _reject_rendered_input_mutation(attempt, update_data)
 
     workflow_template_id = update_data.get(
         "workflow_template_id",
@@ -304,6 +377,42 @@ def update_shot_attempt(
     db.commit()
     db.refresh(attempt)
     return AttemptRead.model_validate(attempt)
+
+
+@router.post(
+    "/shots/{shot_id}/attempts/{attempt_id}/duplicate",
+    response_model=AttemptRead,
+    status_code=201,
+)
+def duplicate_attempt(shot_id: str, attempt_id: str, db: DbSession) -> AttemptRead:
+    """Duplicate render-defining attempt inputs into a new editable attempt."""
+    shot = _get_shot_with_active_attempt(db, shot_id)
+    source = _get_attempt_for_shot(db, shot_id, attempt_id)
+    duplicate = Attempt(
+        shot_id=shot.id,
+        parent_attempt_id=source.id,
+        image_storage_backend=source.image_storage_backend,
+        image_relative_path=source.image_relative_path,
+        end_image_storage_backend=source.end_image_storage_backend,
+        end_image_relative_path=source.end_image_relative_path,
+        input_video_storage_backend=source.input_video_storage_backend,
+        input_video_relative_path=source.input_video_relative_path,
+        shot_note_snapshot=source.shot_note_snapshot,
+        prompt_ko=source.prompt_ko,
+        prompt_en=source.prompt_en,
+        workflow_template_id=source.workflow_template_id,
+        execution_mode_id=source.execution_mode_id,
+        param_overrides=source.param_overrides,
+        seed=source.seed,
+        status=AttemptStatus.NEEDS_INPUT.value,
+    )
+    db.add(duplicate)
+    db.flush()
+    shot.active_attempt_id = duplicate.id
+    shot.status = ShotStatus.NEEDS_INPUT.value
+    db.commit()
+    db.refresh(duplicate)
+    return AttemptRead.model_validate(duplicate)
 
 
 @router.delete("/shots/{shot_id}/attempts/{attempt_id}", status_code=204)

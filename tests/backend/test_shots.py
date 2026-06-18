@@ -233,6 +233,213 @@ def test_update_attempt_workflow_configuration(api_client: TestClient, db_sessio
     assert body["execution_mode_id"] == mode.id
 
 
+def test_create_attempt_makes_it_active(api_client: TestClient, db_session):
+    project = Project(name="Attempt Creation Project")
+    db_session.add(project)
+    db_session.commit()
+
+    shot = Shot(
+        project_id=project.id,
+        order=0,
+        start_time=0.0,
+        end_time=2.0,
+        duration=2.0,
+        status=ShotStatus.NEEDS_INPUT.value,
+    )
+    db_session.add(shot)
+    db_session.commit()
+
+    response = api_client.post(f"/api/shots/{shot.id}/attempts", json={})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["shot_id"] == shot.id
+    assert body["status"] == AttemptStatus.NEEDS_INPUT.value
+    assert body["output_metadata"] is None
+    db_session.expire_all()
+    refreshed_shot = db_session.get(Shot, shot.id)
+    assert refreshed_shot is not None
+    assert refreshed_shot.active_attempt_id == body["id"]
+    assert db_session.get(Attempt, body["id"]) is not None
+
+
+def test_update_attempt_image_fields(api_client: TestClient, db_session):
+    project = Project(name="Attempt Image Update Project")
+    db_session.add(project)
+    db_session.commit()
+
+    shot = Shot(
+        project_id=project.id,
+        order=0,
+        start_time=0.0,
+        end_time=2.0,
+        duration=2.0,
+    )
+    db_session.add(shot)
+    db_session.commit()
+
+    attempt = Attempt(shot_id=shot.id, status=AttemptStatus.NEEDS_INPUT.value)
+    db_session.add(attempt)
+    db_session.commit()
+
+    response = api_client.patch(
+        f"/api/shots/{shot.id}/attempts/{attempt.id}",
+        json={
+            "image_storage_backend": "local",
+            "image_relative_path": "projects/project-1/assets/reference.png",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["image_storage_backend"] == "local"
+    assert body["image_relative_path"] == "projects/project-1/assets/reference.png"
+
+
+def test_duplicate_rendered_attempt_copies_inputs_and_clears_outputs(
+    api_client: TestClient,
+    db_session,
+):
+    project = Project(name="Attempt Duplicate Project")
+    db_session.add(project)
+    db_session.commit()
+
+    shot = Shot(
+        project_id=project.id,
+        order=0,
+        start_time=0.0,
+        end_time=2.0,
+        duration=2.0,
+        status=ShotStatus.NEEDS_REVIEW.value,
+    )
+    template = WorkflowTemplate(name="LTX", json_path="workflow.json")
+    db_session.add_all([shot, template])
+    db_session.commit()
+
+    mode = ExecutionMode(
+        workflow_template_id=template.id,
+        name="Image to video",
+        required_inputs='["image", "prompt_en"]',
+        node_bindings="{}",
+    )
+    db_session.add(mode)
+    db_session.commit()
+
+    attempt = Attempt(
+        shot_id=shot.id,
+        image_storage_backend="local",
+        image_relative_path="projects/project-1/assets/reference.png",
+        shot_note_snapshot="wide shot",
+        prompt_ko="원본 프롬프트",
+        prompt_en="Original prompt",
+        workflow_template_id=template.id,
+        execution_mode_id=mode.id,
+        param_overrides='{"steps": 8}',
+        seed=123,
+        workflow_snapshot='{"nodes": []}',
+        comfyui_prompt_id="prompt-1",
+        output_metadata='{"filename": "output.mp4"}',
+        review_note="approved later",
+        status=AttemptStatus.NEEDS_REVIEW.value,
+    )
+    db_session.add(attempt)
+    db_session.commit()
+
+    response = api_client.post(f"/api/shots/{shot.id}/attempts/{attempt.id}/duplicate")
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["id"] != attempt.id
+    assert body["parent_attempt_id"] == attempt.id
+    assert body["image_storage_backend"] == "local"
+    assert body["image_relative_path"] == "projects/project-1/assets/reference.png"
+    assert body["shot_note_snapshot"] == "wide shot"
+    assert body["prompt_ko"] == "원본 프롬프트"
+    assert body["prompt_en"] == "Original prompt"
+    assert body["workflow_template_id"] == template.id
+    assert body["execution_mode_id"] == mode.id
+    assert body["param_overrides"] == '{"steps": 8}'
+    assert body["seed"] == 123
+    assert body["workflow_snapshot"] is None
+    assert body["comfyui_prompt_id"] is None
+    assert body["output_metadata"] is None
+    assert body["review_note"] is None
+    assert body["status"] == AttemptStatus.NEEDS_INPUT.value
+    db_session.expire_all()
+    refreshed_shot = db_session.get(Shot, shot.id)
+    assert refreshed_shot is not None
+    assert refreshed_shot.active_attempt_id == body["id"]
+
+
+def test_rendered_attempt_rejects_input_mutation(api_client: TestClient, db_session):
+    project = Project(name="Rendered Attempt Guard Project")
+    db_session.add(project)
+    db_session.commit()
+
+    shot = Shot(
+        project_id=project.id,
+        order=0,
+        start_time=0.0,
+        end_time=2.0,
+        duration=2.0,
+    )
+    db_session.add(shot)
+    db_session.commit()
+
+    attempt = Attempt(
+        shot_id=shot.id,
+        prompt_en="Original prompt",
+        output_metadata='{"filename": "output.mp4"}',
+        status=AttemptStatus.NEEDS_REVIEW.value,
+    )
+    db_session.add(attempt)
+    db_session.commit()
+
+    response = api_client.patch(
+        f"/api/shots/{shot.id}/attempts/{attempt.id}",
+        json={"prompt_en": "Changed prompt"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Duplicate rendered attempts before changing inputs"
+    db_session.expire_all()
+    refreshed_attempt = db_session.get(Attempt, attempt.id)
+    assert refreshed_attempt is not None
+    assert refreshed_attempt.prompt_en == "Original prompt"
+
+
+def test_rendered_attempt_allows_review_note_update(api_client: TestClient, db_session):
+    project = Project(name="Rendered Attempt Review Note Project")
+    db_session.add(project)
+    db_session.commit()
+
+    shot = Shot(
+        project_id=project.id,
+        order=0,
+        start_time=0.0,
+        end_time=2.0,
+        duration=2.0,
+    )
+    db_session.add(shot)
+    db_session.commit()
+
+    attempt = Attempt(
+        shot_id=shot.id,
+        output_metadata='{"filename": "output.mp4"}',
+        status=AttemptStatus.NEEDS_REVIEW.value,
+    )
+    db_session.add(attempt)
+    db_session.commit()
+
+    response = api_client.patch(
+        f"/api/shots/{shot.id}/attempts/{attempt.id}",
+        json={"review_note": "keep this render"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["review_note"] == "keep this render"
+
+
 def test_delete_inactive_attempt_keeps_active_attempt(api_client: TestClient, db_session):
     project = Project(name="Delete Inactive Attempt Project")
     db_session.add(project)

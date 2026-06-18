@@ -149,6 +149,28 @@ export async function fetchShotAttempts(shotId: string): Promise<Attempt[]> {
   return get<Attempt[]>(`/shots/${shotId}/attempts`);
 }
 
+export interface CreateAttemptBody {
+  image_storage_backend?: string | null;
+  image_relative_path?: string | null;
+  shot_note_snapshot?: string | null;
+  prompt_ko?: string | null;
+  prompt_en?: string | null;
+  workflow_template_id?: string | null;
+  execution_mode_id?: string | null;
+  param_overrides?: string | null;
+  seed?: number | null;
+}
+
+export async function createAttempt(
+  shotId: string,
+  body: CreateAttemptBody = {},
+): Promise<Attempt> {
+  return postJson<Attempt>(
+    `/shots/${encodeURIComponent(shotId)}/attempts`,
+    body,
+  );
+}
+
 export async function updateShot(
   shotId: string,
   body: Partial<Pick<Shot, "start_time" | "end_time" | "shot_note" | "active_attempt_id" | "status">>,
@@ -182,10 +204,19 @@ export async function generatePrompt(attemptId: string): Promise<Attempt> {
 }
 
 export interface SavePromptBody {
+  image_storage_backend?: string | null;
+  image_relative_path?: string | null;
+  end_image_storage_backend?: string | null;
+  end_image_relative_path?: string | null;
+  input_video_storage_backend?: string | null;
+  input_video_relative_path?: string | null;
+  shot_note_snapshot?: string | null;
   prompt_ko?: string | null;
   prompt_en?: string | null;
   workflow_template_id?: string | null;
   execution_mode_id?: string | null;
+  param_overrides?: string | null;
+  seed?: number | null;
   review_note?: string | null;
 }
 
@@ -209,6 +240,16 @@ export async function fetchAssets(projectId: string): Promise<Asset[]> {
 export async function enqueueRender(shotId: string, attemptId: string): Promise<Job> {
   return postJson<Job>(
     `/shots/${encodeURIComponent(shotId)}/attempts/${encodeURIComponent(attemptId)}/render`,
+    {},
+  );
+}
+
+export async function duplicateAttempt(
+  shotId: string,
+  attemptId: string,
+): Promise<Attempt> {
+  return postJson<Attempt>(
+    `/shots/${encodeURIComponent(shotId)}/attempts/${encodeURIComponent(attemptId)}/duplicate`,
     {},
   );
 }

@@ -6,6 +6,8 @@ interface AssetPickerProps {
   shotId: string | null;
   onAssetSelected?: (asset: Asset) => void;
   onAttemptCreated?: (attempt: Attempt) => void;
+  selectLabel?: (asset: Asset) => string;
+  showCreateAttempt?: boolean;
 }
 
 async function fetchAssets(projectId: string): Promise<Asset[]> {
@@ -49,6 +51,8 @@ export function AssetPicker({
   shotId,
   onAssetSelected,
   onAttemptCreated,
+  selectLabel,
+  showCreateAttempt = true,
 }: AssetPickerProps) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -164,7 +168,7 @@ export function AssetPicker({
                 }
                 onClick={() => handleAssetClick(asset)}
                 title={asset.name}
-                aria-label={`Select asset ${asset.name}`}
+                aria-label={selectLabel ? selectLabel(asset) : `Select asset ${asset.name}`}
               >
                 <img
                   src={asset.thumb_url}
@@ -173,7 +177,7 @@ export function AssetPicker({
                 />
                 <span className="asset-picker__label">{asset.name}</span>
               </button>
-              {selectedAsset?.id === asset.id && shotId ? (
+              {selectedAsset?.id === asset.id && shotId && showCreateAttempt ? (
                 <button
                   type="button"
                   className="asset-picker__create-btn"
