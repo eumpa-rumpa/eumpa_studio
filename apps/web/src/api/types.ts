@@ -6,6 +6,13 @@ export interface HealthResponse {
   codex_cli: string;
 }
 
+/** Studio-wide prompt setting returned from settings routes */
+export interface PromptSystemDefault {
+  system_prompt: string;
+  is_custom: boolean;
+  updated_at: string | null;
+}
+
 /** A project returned from the API */
 export interface Project {
   id: string;

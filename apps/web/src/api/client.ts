@@ -5,6 +5,7 @@ import type {
   HealthResponse,
   Job,
   Project,
+  PromptSystemDefault,
   Shot,
   WorkflowTemplate,
 } from "./types";
@@ -101,6 +102,18 @@ export async function fetchJobs(): Promise<Job[]> {
 
 export async function fetchWorkflowTemplates(): Promise<WorkflowTemplate[]> {
   return get<WorkflowTemplate[]>("/workflows/templates");
+}
+
+export async function fetchPromptSystemDefault(): Promise<PromptSystemDefault> {
+  return get<PromptSystemDefault>("/settings/prompt-system-default");
+}
+
+export async function savePromptSystemDefault(
+  systemPrompt: string,
+): Promise<PromptSystemDefault> {
+  return patch<PromptSystemDefault>("/settings/prompt-system-default", {
+    system_prompt: systemPrompt,
+  });
 }
 
 export interface SkillWorkflowBootstrap {
