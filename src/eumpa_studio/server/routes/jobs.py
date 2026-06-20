@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from eumpa_studio.db.session import get_session
-from eumpa_studio.domain.models import Attempt, ExecutionMode, Job, WorkflowTemplate
+from eumpa_studio.domain.models import Attempt, ExecutionMode, Job, Project, WorkflowTemplate
 from eumpa_studio.domain.statuses import JobStatus
 
 router = APIRouter()
@@ -137,6 +137,8 @@ def enqueue_alignment_job(project_id: str, db: DbSession) -> Job:
 
     Returns 201 + :class:`JobRead` with ``type="align"``.
     """
+    if db.get(Project, project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
     return _create_job(db, "align", "project", project_id)
 
 

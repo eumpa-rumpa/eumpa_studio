@@ -176,6 +176,13 @@ def test_jobs_api_enqueues_lists_and_gets_jobs(api_client: TestClient):
     assert get_response.json() == created
 
 
+def test_alignment_job_rejects_missing_project(api_client: TestClient):
+    response = api_client.post("/api/projects/missing-project-id/align")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project not found"
+
+
 def test_app_job_runner_dispatches_align_and_render(session_factory):
     class Settings:
         comfyui_url = "http://comfy.local:8188"

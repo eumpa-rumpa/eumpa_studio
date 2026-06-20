@@ -269,6 +269,76 @@ def test_update_attempt_workflow_configuration(api_client: TestClient, db_sessio
     assert body["execution_mode_id"] == mode.id
 
 
+def test_create_shot_rejects_invalid_time_range(api_client: TestClient, db_session):
+    project = Project(name="Invalid Shot Range Project")
+    db_session.add(project)
+    db_session.commit()
+
+    response = api_client.post(
+        f"/api/projects/{project.id}/shots",
+        json={
+            "order": 0,
+            "start_time": 4.0,
+            "end_time": 4.0,
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Shot end_time must be greater than start_time"
+
+
+def test_create_shot_recomputes_supplied_duration(api_client: TestClient, db_session):
+    project = Project(name="Duration Recompute Project")
+    db_session.add(project)
+    db_session.commit()
+
+    response = api_client.post(
+        f"/api/projects/{project.id}/shots",
+        json={
+            "order": 0,
+            "start_time": 1.25,
+            "end_time": 4.0,
+            "duration": 99.0,
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["duration"] == 2.75
+
+
+def test_update_shot_rejects_invalid_time_range(api_client: TestClient, db_session):
+    project = Project(name="Invalid Shot Update Range Project")
+    db_session.add(project)
+    db_session.commit()
+
+    shot = Shot(
+        project_id=project.id,
+        order=0,
+        start_time=1.0,
+        end_time=3.0,
+        duration=2.0,
+    )
+    db_session.add(shot)
+    db_session.commit()
+
+    response = api_client.patch(
+        f"/api/shots/{shot.id}",
+        json={
+            "start_time": 3.0,
+            "end_time": 2.0,
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Shot end_time must be greater than start_time"
+    db_session.expire_all()
+    refreshed_shot = db_session.get(Shot, shot.id)
+    assert refreshed_shot is not None
+    assert refreshed_shot.start_time == 1.0
+    assert refreshed_shot.end_time == 3.0
+    assert refreshed_shot.duration == 2.0
+
+
 def test_create_attempt_makes_it_active(api_client: TestClient, db_session):
     project = Project(name="Attempt Creation Project")
     db_session.add(project)
