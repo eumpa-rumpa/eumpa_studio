@@ -305,6 +305,16 @@ def _read_shot(db: Session, shot: Shot, settings: Settings) -> ShotRead:
     return _serialize_shot(shot, counts.get(shot.id, 0), settings)
 
 
+def _calculate_duration(start_time: float, end_time: float) -> float:
+    duration = end_time - start_time
+    if duration <= 0:
+        raise HTTPException(
+            status_code=422,
+            detail="Shot end_time must be greater than start_time",
+        )
+    return duration
+
+
 @router.get("/shots", response_model=list[ShotRead])
 def list_shots(project_id: str, db: DbSession, settings: SettingsDep) -> list[ShotRead]:
     """List shots for a project ordered by shot order."""
@@ -379,11 +389,13 @@ def update_shot(
     if "active_attempt_id" in update_data:
         _validate_active_attempt(db, shot, body.active_attempt_id)
 
+    next_start_time = update_data.get("start_time", shot.start_time)
+    next_end_time = update_data.get("end_time", shot.end_time)
+    if "start_time" in update_data or "end_time" in update_data:
+        shot.duration = _calculate_duration(next_start_time, next_end_time)
+
     for field, value in update_data.items():
         setattr(shot, field, value)
-
-    if "start_time" in update_data or "end_time" in update_data:
-        shot.duration = shot.end_time - shot.start_time
 
     db.commit()
     db.refresh(shot)
@@ -483,9 +495,7 @@ def create_shot(
     if db.get(Project, project_id) is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    duration = body.duration
-    if duration is None:
-        duration = body.end_time - body.start_time
+    duration = _calculate_duration(body.start_time, body.end_time)
 
     shot = Shot(
         project_id=project_id,
