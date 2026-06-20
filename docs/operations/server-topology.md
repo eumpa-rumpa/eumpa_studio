@@ -5,7 +5,6 @@
 The small server is the operator-facing control plane for the MVP:
 
 - FastAPI backend
-- React static frontend assets
 - SQLite database
 - Job worker
 - Codex CLI
@@ -27,8 +26,10 @@ files on this server unless the operator explicitly selects clips for export.
 
 ## Client Machines
 
-Client machines are browsers on the internal network. They access the React UI
-served by the small server and send API requests to the FastAPI backend.
+Client machines are browsers on the internal network. In local development,
+they access the React UI from the Vite dev server and send API requests through
+the Vite `/api` proxy to the FastAPI backend. A production static asset serving
+path has not been wired yet.
 
 ## Storage Policy
 
@@ -42,9 +43,13 @@ Use `.env` on the small server to point the backend at the render server:
 
 ```dotenv
 EUMPA_DATA_ROOT=/srv/eumpa-studio
+EUMPA_DATABASE_URL=sqlite:////srv/eumpa-studio/eumpa.db
 EUMPA_COMFYUI_URL=http://comfyui-server:8188
 EUMPA_CODEX_CLI_PATH=/usr/local/bin/codex
 ```
+
+`DATABASE_URL` is still accepted as a fallback for hosted environments, but
+prefer `EUMPA_DATABASE_URL` for this app.
 
 ## Startup Troubleshooting
 
@@ -57,7 +62,7 @@ curl http://localhost:8000/api/health
 Common startup errors:
 
 - `uv: command not found`: install uv or put it on `PATH`.
-- `alembic: command not found`: run `uv sync`, then start with `uv run eumpa_studio start`.
+- `alembic: command not found`: run `uv sync --dev`, then start with `uv run eumpa-studio start`.
 - `address already in use`: another process is using port 8000; stop it or pass `--port`.
 - `cannot connect to ComfyUI`: verify `EUMPA_COMFYUI_URL` and that the ComfyUI server is reachable from the small server.
 - `codex: command not found`: set `EUMPA_CODEX_CLI_PATH` to the absolute Codex CLI path.

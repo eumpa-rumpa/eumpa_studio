@@ -1,6 +1,7 @@
 """Application configuration for eumpa_studio."""
 
 from functools import lru_cache
+import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,6 +22,20 @@ class Settings(BaseSettings):
         env_prefix="EUMPA_",
         env_file=".env",
         extra="ignore",
+    )
+
+
+def database_url_from_env() -> str:
+    """Return the configured database URL.
+
+    Prefer the app-scoped environment variable. Keep ``DATABASE_URL`` as a
+    compatibility fallback for hosted environments and older local scripts.
+    ``Settings`` is used last so values from .env are honored in cloned repos.
+    """
+    return (
+        os.environ.get("EUMPA_DATABASE_URL")
+        or os.environ.get("DATABASE_URL")
+        or str(Settings().database_url)
     )
 
 

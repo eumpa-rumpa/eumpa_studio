@@ -24,10 +24,17 @@ router = APIRouter()
 DbSession = Annotated[Session, Depends(get_session)]
 AppSettings = Annotated[Settings, Depends(get_settings_dep)]
 
-SKILL_LTX_WORKFLOW_PATH = (
+LEGACY_SKILL_LTX_WORKFLOW_PATH = (
     "/Users/songhaban/.codex/skills/comfy-ltx-lipsync-runner/assets/workflows/"
     "default_ltx2_ia2v_lipsync.json"
 )
+SKILL_LTX_WORKFLOW_SOURCE_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "resources"
+    / "workflows"
+    / "default_ltx2_ia2v_lipsync.json"
+)
+SKILL_LTX_WORKFLOW_PATH = str(SKILL_LTX_WORKFLOW_SOURCE_PATH)
 SKILL_LTX_NODE_BINDINGS = {
     "image": {"node_id": "14", "field": "image"},
     "audio": {"node_id": "40", "field": "audio"},
@@ -144,7 +151,7 @@ def _read_workflow_template(template: WorkflowTemplate) -> WorkflowTemplateRead:
 
 
 def _copy_skill_ltx_workflow(settings: Settings) -> str:
-    source_path = Path(SKILL_LTX_WORKFLOW_PATH)
+    source_path = SKILL_LTX_WORKFLOW_SOURCE_PATH
     validation_error = _workflow_template_validation_error(str(source_path))
     if validation_error is not None:
         raise HTTPException(status_code=422, detail=validation_error)
@@ -220,6 +227,7 @@ def bootstrap_ltx_lipsync_workflow(
                 WorkflowTemplate.name == SKILL_LTX_TEMPLATE_NAME,
                 WorkflowTemplate.json_path == copied_workflow_path,
                 WorkflowTemplate.json_path == SKILL_LTX_WORKFLOW_PATH,
+                WorkflowTemplate.json_path == LEGACY_SKILL_LTX_WORKFLOW_PATH,
             )
         )
         .order_by(WorkflowTemplate.created_at, WorkflowTemplate.id)

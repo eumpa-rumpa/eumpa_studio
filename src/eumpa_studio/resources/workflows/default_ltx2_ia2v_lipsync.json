@@ -1,0 +1,400 @@
+{
+  "1": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": 349153801885864,
+      "steps": 8,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "start_at_step": 0,
+      "end_at_step": 10000,
+      "return_noise": "disable",
+      "model": [
+        "26",
+        0
+      ],
+      "positive": [
+        "11",
+        0
+      ],
+      "negative": [
+        "38",
+        0
+      ],
+      "latent_image": [
+        "28",
+        0
+      ]
+    },
+    "class_type": "PainterSamplerLTXV",
+    "_meta": {
+      "title": "PainterSamplerLTXV"
+    }
+  },
+  "7": {
+    "inputs": {
+      "frame_rate": 25,
+      "loop_count": 0,
+      "filename_prefix": "ltx2\\ltx2",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "27",
+        0
+      ],
+      "audio": [
+        "40",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "10": {
+    "inputs": {
+      "ckpt_name": "ltx-2-19b-distilled-fp8.safetensors"
+    },
+    "class_type": "LTXVAudioVAELoader",
+    "_meta": {
+      "title": "LTXV 오디오 VAE 로더"
+    }
+  },
+  "11": {
+    "inputs": {
+      "text": "Cinematic video.\nSubject:\nThe same older man from the source image, seated in a professional recording studio. He has short white hair, a dark navy three-piece suit, white dress shirt, and dark bow tie. Preserve his facial structure, hairstyle, outfit, seated posture, and the recording studio setting. Keep the blurred shoulder and partial back of the other man in the right foreground as an over-the-shoulder composition element.\n\nExpression and gaze:\nHe keeps the same gaze direction as in the source image, looking at the other man. His expression becomes slightly playful and meaningful, with a sly, knowing smile and subtly raised mouth corner, as if delivering a clever line.\n\nAction:\nHe leans his upper body slightly toward the other man while speaking, as if drawing him into the point. He says, “무대는 마법처럼~” with a smooth, slightly teasing, mischievous tone. His mouth moves naturally with the line. Keep the movement restrained and elegant: only a small forward lean, slight head tilt, subtle eyebrow movement, and a faint knowing smile. No exaggerated gestures. The other man remains mostly still in the foreground, helping the shot feel like a real shared conversation.\n\nEnvironment:\nWarm recording studio interior with mixing console, glowing monitor screen, desk lamps, wood-paneled acoustic walls, and soft studio ambience. The subject and background feel fully integrated in one real space, with realistic depth and subtle ambient stillness.\n\nCamera:\nMedium close-up over-the-shoulder shot from behind the other man. Stable cinematic camera with only very subtle natural camera breathing, maintaining the same shot continuity and grounded spatial realism.\n\nLighting:\nWarm practical lamp light, soft studio key light on the speaker’s face, gentle contrast across the suit, subtle monitor glow in the background, and realistic light falloff in the room.\n\nStyle:\nCinematic realism, unified live-action shot, natural conversation coverage, elegant studio atmosphere.\n\nDetails:\nNatural skin texture, realistic lip movement, subtle blinking, slight forward body shift, faint fabric response from leaning, soft depth of field, accurate perspective, realistic image-space continuity, no cutout feeling.\n\nMood:\nIntimate, witty, slightly theatrical, charming, and sly, like a clever line delivered with quiet confidence in a real conversation.",
+      "clip": [
+        "21",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP 텍스트 인코딩 (프롬프트)"
+    }
+  },
+  "14": {
+    "inputs": {
+      "image": "ig_08a3dee7e72b3bf3016a0542c4d9b48191a539e17f281f5fa8.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "이미지 로드"
+    }
+  },
+  "16": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 1.2,
+      "resolution_steps": 1,
+      "image": [
+        "14",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "총 픽셀 수에 맞춰 이미지 크기 조정"
+    }
+  },
+  "21": {
+    "inputs": {
+      "text_encoder": "gemma_3_12B_it_fp4_mixed.safetensors",
+      "ckpt_name": "ltx-2-19b-distilled-fp8.safetensors",
+      "device": "default"
+    },
+    "class_type": "LTXAVTextEncoderLoader",
+    "_meta": {
+      "title": "LTXV 오디오 텍스트 인코더 로더"
+    }
+  },
+  "22": {
+    "inputs": {
+      "ckpt_name": "ltx-2-19b-distilled-fp8.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "체크포인트 로드"
+    }
+  },
+  "26": {
+    "inputs": {
+      "sage_attention": "auto",
+      "allow_compile": false,
+      "model": [
+        "45",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
+    }
+  },
+  "27": {
+    "inputs": {
+      "tile_size": 768,
+      "overlap": 64,
+      "temporal_size": 4096,
+      "temporal_overlap": 8,
+      "samples": [
+        "1",
+        1
+      ],
+      "vae": [
+        "22",
+        2
+      ]
+    },
+    "class_type": "VAEDecodeTiled",
+    "_meta": {
+      "title": "VAE 디코드 (타일)"
+    }
+  },
+  "28": {
+    "inputs": {
+      "video_latent": [
+        "29",
+        0
+      ],
+      "audio_latent": [
+        "31",
+        0
+      ]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {
+      "title": "LTXVConcatAVLatent"
+    }
+  },
+  "29": {
+    "inputs": {
+      "strength": 1,
+      "bypass": false,
+      "vae": [
+        "22",
+        2
+      ],
+      "image": [
+        "36",
+        0
+      ],
+      "latent": [
+        "30",
+        0
+      ]
+    },
+    "class_type": "LTXVImgToVideoInplace",
+    "_meta": {
+      "title": "LTXVImgToVideoInplace"
+    }
+  },
+  "30": {
+    "inputs": {
+      "width": 1920,
+      "height": 1088,
+      "length": [
+        "43",
+        0
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyLTXVLatentVideo",
+    "_meta": {
+      "title": "빈 잠재 비디오 (LTXV)"
+    }
+  },
+  "31": {
+    "inputs": {
+      "samples": [
+        "33",
+        0
+      ],
+      "mask": [
+        "34",
+        0
+      ]
+    },
+    "class_type": "SetLatentNoiseMask",
+    "_meta": {
+      "title": "잠재 데이터에 노이즈 마스크 설정"
+    }
+  },
+  "33": {
+    "inputs": {
+      "audio": [
+        "40",
+        0
+      ],
+      "audio_vae": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "LTXVAudioVAEEncode",
+    "_meta": {
+      "title": "LTXV 오디오 VAE 인코드"
+    }
+  },
+  "34": {
+    "inputs": {
+      "value": 0,
+      "width": 512,
+      "height": 512
+    },
+    "class_type": "SolidMask",
+    "_meta": {
+      "title": "단색 마스크"
+    }
+  },
+  "35": {
+    "inputs": {
+      "mask": [
+        "34",
+        0
+      ]
+    },
+    "class_type": "MaskPreview+",
+    "_meta": {
+      "title": "🔧 Mask Preview"
+    }
+  },
+  "36": {
+    "inputs": {
+      "img_compression": 35,
+      "image": [
+        "16",
+        0
+      ]
+    },
+    "class_type": "LTXVPreprocess",
+    "_meta": {
+      "title": "LTXV 전처리"
+    }
+  },
+  "37": {
+    "inputs": {
+      "images": [
+        "36",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "이미지 미리보기"
+    }
+  },
+  "38": {
+    "inputs": {
+      "conditioning": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "조건 (0으로 출력)"
+    }
+  },
+  "40": {
+    "inputs": {
+      "audio": "리스트에디슨.mp3",
+      "start_time": 16,
+      "duration": 4
+    },
+    "class_type": "VHS_LoadAudioUpload",
+    "_meta": {
+      "title": "Load Audio (Upload)🎥🅥🅗🅢"
+    }
+  },
+  "43": {
+    "inputs": {
+      "value": "a*b",
+      "a": [
+        "40",
+        1
+      ],
+      "b": [
+        "44",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "🔧 Simple Math"
+    }
+  },
+  "44": {
+    "inputs": {
+      "value": 25
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "FPS설정"
+    }
+  },
+  "45": {
+    "inputs": {
+      "lora_name": "ltx-2-19b-ic-lora-detailer.safetensors",
+      "strength_model": 0.8,
+      "model": [
+        "22",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA 로드 (모델 전용)"
+    }
+  },
+  "46": {
+    "inputs": {
+      "output": "",
+      "input": [
+        "43",
+        0
+      ]
+    },
+    "class_type": "Display Int (rgthree)",
+    "_meta": {
+      "title": "Display Int (rgthree)"
+    }
+  },
+  "49": {
+    "inputs": {
+      "offload_model": true,
+      "offload_cache": true,
+      "anything": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "VRAMCleanup",
+    "_meta": {
+      "title": "🎈VRAM-Cleanup"
+    }
+  },
+  "50": {
+    "inputs": {
+      "clean_file_cache": true,
+      "clean_processes": true,
+      "clean_dlls": true,
+      "retry_times": 3,
+      "anything": [
+        "49",
+        0
+      ]
+    },
+    "class_type": "RAMCleanup",
+    "_meta": {
+      "title": "🎈RAM-Cleanup"
+    }
+  }
+}

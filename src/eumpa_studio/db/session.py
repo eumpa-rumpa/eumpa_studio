@@ -1,14 +1,13 @@
 """Database session factory for eumpa_studio."""
 
-import os
 from typing import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-_DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "sqlite:///eumpa_studio.db"
-)
+from eumpa_studio.config import database_url_from_env
+
+_DATABASE_URL = database_url_from_env()
 
 engine = create_engine(
     _DATABASE_URL,
