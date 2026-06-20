@@ -6,10 +6,12 @@ import {
   duplicateAttempt,
   enqueueRender,
   fetchExecutionModes,
+  fetchAttemptVideoUrl,
   fetchPromptSystemDefault,
   fetchShotAttempts,
   fetchWorkflowTemplates,
   generatePrompt as generatePromptRequest,
+  reviewAttempt,
   savePrompt as saveAttemptRequest,
   savePromptSystemDefault,
   updateShot,
@@ -24,8 +26,6 @@ interface ShotDrawerProps {
   onClose: () => void;
   onShotUpdated: () => void;
 }
-
-const BASE_URL = "/api";
 
 type ReviewStatus = "Selected" | "Redo" | "Rejected";
 type ImageRole = "start" | "end";
@@ -71,40 +71,6 @@ function parseRequiredInputs(mode: ExecutionMode | null): string[] {
       : [];
   } catch {
     return [];
-  }
-}
-
-async function fetchVideoUrl(shotId: string, attemptId: string): Promise<string> {
-  const response = await fetch(
-    `${BASE_URL}/shots/${shotId}/attempts/${attemptId}/video-url`,
-  );
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-  }
-  const data = (await response.json()) as { video_url: string };
-  return data.video_url;
-}
-
-async function postReview(
-  shotId: string,
-  attemptId: string,
-  status: string,
-  reviewNote?: string,
-): Promise<void> {
-  const body: { status: string; review_note?: string } = { status };
-  if (reviewNote !== undefined) {
-    body.review_note = reviewNote;
-  }
-  const response = await fetch(
-    `${BASE_URL}/shots/${shotId}/attempts/${attemptId}/review`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
   }
 }
 
@@ -579,7 +545,7 @@ export function ShotDrawer({
     setVideoUrl(null);
     setVideoError(null);
 
-    fetchVideoUrl(currentShot.id, expandedAttempt.id)
+    fetchAttemptVideoUrl(currentShot.id, expandedAttempt.id)
       .then((url) => {
         if (!cancelled) {
           setVideoUrl(url);
@@ -880,7 +846,7 @@ export function ShotDrawer({
     setReviewError(null);
     setReviewSaving(true);
     try {
-      await postReview(currentShot.id, expandedAttempt.id, status);
+      await reviewAttempt(currentShot.id, expandedAttempt.id, { status });
       setReviewStatus(status);
       setAttempts((items) =>
         items.map((item) =>
@@ -913,7 +879,10 @@ export function ShotDrawer({
     setReviewSaving(true);
     try {
       const status = reviewStatus ?? expandedAttempt.status;
-      await postReview(currentShot.id, expandedAttempt.id, status, reviewNote);
+      await reviewAttempt(currentShot.id, expandedAttempt.id, {
+        status,
+        review_note: reviewNote,
+      });
       setAttempts((items) =>
         items.map((item) =>
           item.id === expandedAttempt.id ? { ...item, review_note: reviewNote } : item,

@@ -535,11 +535,15 @@ def review_attempt(
     if body.review_note is not None:
         attempt.review_note = body.review_note
 
+    shot = db.get(Shot, shot_id)
+    if shot is None:
+        raise HTTPException(status_code=404, detail="Shot not found")
+
     if body.status == AttemptStatus.SELECTED.value:
-        shot = db.get(Shot, shot_id)
-        if shot is None:
-            raise HTTPException(status_code=404, detail="Shot not found")
         shot.active_attempt_id = attempt_id
+        shot.status = ShotStatus.SELECTED.value
+    elif shot.active_attempt_id == attempt_id:
+        shot.status = body.status
 
     db.commit()
     db.refresh(attempt)

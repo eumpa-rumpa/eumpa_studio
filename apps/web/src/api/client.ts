@@ -267,6 +267,36 @@ export async function enqueueRender(shotId: string, attemptId: string): Promise<
   );
 }
 
+export async function fetchAttemptVideoUrl(
+  shotId: string,
+  attemptId: string,
+): Promise<string> {
+  const encodedShotId = encodeURIComponent(shotId);
+  const encodedAttemptId = encodeURIComponent(attemptId);
+  const data = await get<{ video_url: string }>(
+    `/shots/${encodedShotId}/attempts/${encodedAttemptId}/video-url`,
+  );
+  return data.video_url;
+}
+
+export interface ReviewAttemptBody {
+  status: string;
+  review_note?: string;
+}
+
+export async function reviewAttempt(
+  shotId: string,
+  attemptId: string,
+  body: ReviewAttemptBody,
+): Promise<Attempt> {
+  const encodedShotId = encodeURIComponent(shotId);
+  const encodedAttemptId = encodeURIComponent(attemptId);
+  return postJson<Attempt>(
+    `/shots/${encodedShotId}/attempts/${encodedAttemptId}/review`,
+    body,
+  );
+}
+
 export async function duplicateAttempt(
   shotId: string,
   attemptId: string,

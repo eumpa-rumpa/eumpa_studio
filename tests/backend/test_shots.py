@@ -502,6 +502,98 @@ def test_rendered_attempt_allows_review_note_update(api_client: TestClient, db_s
     assert response.json()["review_note"] == "keep this render"
 
 
+@pytest.mark.parametrize(
+    ("review_status", "expected_shot_status"),
+    [
+        (AttemptStatus.SELECTED.value, ShotStatus.SELECTED.value),
+        (AttemptStatus.REDO.value, ShotStatus.REDO.value),
+        (AttemptStatus.REJECTED.value, ShotStatus.REJECTED.value),
+        (AttemptStatus.FAILED.value, ShotStatus.FAILED.value),
+    ],
+)
+def test_review_active_attempt_updates_parent_shot_status(
+    api_client: TestClient,
+    db_session,
+    review_status: str,
+    expected_shot_status: str,
+):
+    project = Project(name=f"Review Status {review_status} Project")
+    db_session.add(project)
+    db_session.commit()
+
+    shot = Shot(
+        project_id=project.id,
+        order=0,
+        start_time=0.0,
+        end_time=2.0,
+        duration=2.0,
+        status=ShotStatus.NEEDS_REVIEW.value,
+    )
+    db_session.add(shot)
+    db_session.commit()
+
+    attempt = Attempt(
+        shot_id=shot.id,
+        output_metadata='{"filename": "output.mp4"}',
+        status=AttemptStatus.NEEDS_REVIEW.value,
+    )
+    db_session.add(attempt)
+    db_session.commit()
+    shot.active_attempt_id = attempt.id
+    db_session.commit()
+
+    response = api_client.post(
+        f"/api/shots/{shot.id}/attempts/{attempt.id}/review",
+        json={"status": review_status},
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    refreshed_shot = db_session.get(Shot, shot.id)
+    assert refreshed_shot is not None
+    assert refreshed_shot.active_attempt_id == attempt.id
+    assert refreshed_shot.status == expected_shot_status
+
+
+def test_review_non_active_attempt_does_not_change_parent_shot_status(
+    api_client: TestClient,
+    db_session,
+):
+    project = Project(name="Non Active Review Status Project")
+    db_session.add(project)
+    db_session.commit()
+
+    shot = Shot(
+        project_id=project.id,
+        order=0,
+        start_time=0.0,
+        end_time=2.0,
+        duration=2.0,
+        status=ShotStatus.NEEDS_REVIEW.value,
+    )
+    db_session.add(shot)
+    db_session.commit()
+
+    active_attempt = Attempt(shot_id=shot.id, status=AttemptStatus.NEEDS_REVIEW.value)
+    other_attempt = Attempt(shot_id=shot.id, status=AttemptStatus.NEEDS_REVIEW.value)
+    db_session.add_all([active_attempt, other_attempt])
+    db_session.commit()
+    shot.active_attempt_id = active_attempt.id
+    db_session.commit()
+
+    response = api_client.post(
+        f"/api/shots/{shot.id}/attempts/{other_attempt.id}/review",
+        json={"status": AttemptStatus.REJECTED.value},
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    refreshed_shot = db_session.get(Shot, shot.id)
+    assert refreshed_shot is not None
+    assert refreshed_shot.active_attempt_id == active_attempt.id
+    assert refreshed_shot.status == ShotStatus.NEEDS_REVIEW.value
+
+
 def test_delete_inactive_attempt_keeps_active_attempt(api_client: TestClient, db_session):
     project = Project(name="Delete Inactive Attempt Project")
     db_session.add(project)
