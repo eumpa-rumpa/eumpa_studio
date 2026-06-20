@@ -13,6 +13,7 @@ from eumpa_studio.db.base import Base
 from eumpa_studio.db.session import get_session
 from eumpa_studio.server.app import app
 from eumpa_studio.server.deps import get_settings_dep
+from eumpa_studio.server.routes.workflows import SKILL_LTX_WORKFLOW_SOURCE_PATH
 
 
 @pytest.fixture()
@@ -90,6 +91,12 @@ def test_create_workflow_template_rejects_missing_file(api_client: TestClient):
 
     assert template_response.status_code == 422
     assert "Workflow template file not found" in template_response.json()["detail"]
+
+
+def test_bundled_ltx_workflow_source_is_repo_portable():
+    assert SKILL_LTX_WORKFLOW_SOURCE_PATH.is_file()
+    assert ".codex/skills" not in str(SKILL_LTX_WORKFLOW_SOURCE_PATH)
+    assert "eumpa_studio" in str(SKILL_LTX_WORKFLOW_SOURCE_PATH)
 
 
 def test_bootstrap_ltx_lipsync_skill_workflow_is_idempotent(

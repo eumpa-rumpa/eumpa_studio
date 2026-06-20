@@ -7,6 +7,7 @@ from sqlalchemy import engine_from_config, pool
 
 # Import Base so all models are registered
 from eumpa_studio.db.base import Base
+from eumpa_studio.config import database_url_from_env
 
 # noqa: F401 — side-effect import to register all ORM models with Base.metadata
 import eumpa_studio.domain.models  # noqa: F401
@@ -17,6 +18,8 @@ config = context.config
 # Interpret the config file for Python logging (if present and not overriding).
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+config.set_main_option("sqlalchemy.url", database_url_from_env())
 
 # MetaData object for autogenerate support
 target_metadata = Base.metadata
