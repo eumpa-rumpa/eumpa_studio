@@ -14,8 +14,61 @@ function previewText(value: string | null, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
 }
 
+function filenameFromPath(value: string | null): string | null {
+  if (!value) return null;
+  const parts = value.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? value;
+}
+
 function formatSeconds(value: number): string {
   return value.toFixed(1).replace(/\.0$/, "");
+}
+
+function getAttemptLabel(shot: Shot): string {
+  if (shot.active_attempt) {
+    return `Active / ${Math.max(shot.attempt_count, 1)}`;
+  }
+
+  if (shot.attempt_count === 1) return "1 attempt";
+  return `${shot.attempt_count} attempts`;
+}
+
+function getPromptPreview(shot: Shot): string {
+  return previewText(shot.active_attempt?.prompt_ko ?? shot.active_attempt?.prompt_en ?? "No prompt", 84);
+}
+
+function ShotReferenceImageState({ shot }: { shot: Shot }) {
+  const imageLabel = filenameFromPath(shot.active_attempt?.image_relative_path ?? null);
+
+  return (
+    <span
+      className={imageLabel ? "shot-table__image-chip" : "shot-table__image-chip shot-table__image-chip--empty"}
+      title={imageLabel ?? "No image"}
+    >
+      <span className="shot-table__image-thumb" aria-hidden="true" />
+      <span className="shot-table__image-label">{imageLabel ?? "No image"}</span>
+    </span>
+  );
+}
+
+function ShotAttemptOverview({ shot }: { shot: Shot }) {
+  return (
+    <span className="shot-table__attempt-overview">
+      <span className="shot-table__attempt-row">
+        <span className="shot-table__badge">{getAttemptLabel(shot)}</span>
+        {shot.active_attempt ? (
+          <span className="shot-table__attempt-status">{shot.active_attempt.status}</span>
+        ) : null}
+      </span>
+      <span className="shot-table__attempt-assets">
+        <ShotReferenceImageState shot={shot} />
+        <span className="shot-table__prompt-chip" title={getPromptPreview(shot)}>
+          {getPromptPreview(shot)}
+        </span>
+        <ShotVideoPreview shot={shot} />
+      </span>
+    </span>
+  );
 }
 
 function ShotVideoPreview({ shot }: { shot: Shot }) {
@@ -145,8 +198,8 @@ export function ShotTable({ projectId, onShotSelect, onJobsUpdated }: ShotTableP
               <th scope="col">Time</th>
               <th scope="col">Speaker</th>
               <th scope="col">Lyrics</th>
-              <th scope="col">Preview</th>
-              <th scope="col">Attempts</th>
+              <th scope="col">Note</th>
+              <th scope="col">Attempt</th>
               <th scope="col">Status</th>
               <th scope="col">Actions</th>
             </tr>
@@ -165,22 +218,26 @@ export function ShotTable({ projectId, onShotSelect, onJobsUpdated }: ShotTableP
                   }
                 }}
               >
-                <td className="shot-table__index">{shot.order + 1}</td>
-                <td className="shot-table__time">
+                <td className="shot-table__index" data-label="#">
+                  {shot.order + 1}
+                </td>
+                <td className="shot-table__time" data-label="Time">
                   {formatSeconds(shot.start_time)}-{formatSeconds(shot.end_time)}s
                 </td>
-                <td>{shot.speaker ?? "—"}</td>
-                <td className="shot-table__preview">{previewText(shot.lyrics_text, 60)}</td>
-                <td className="shot-table__video-cell">
-                  <ShotVideoPreview shot={shot} />
+                <td data-label="Speaker">{shot.speaker ?? "—"}</td>
+                <td className="shot-table__preview" data-label="Lyrics">
+                  {previewText(shot.lyrics_text, 58)}
                 </td>
-                <td>
-                  <span className="shot-table__badge">{shot.attempt_count}</span>
+                <td className="shot-table__note" data-label="Note">
+                  {previewText(shot.shot_note, 54)}
                 </td>
-                <td>
+                <td className="shot-table__attempt-cell" data-label="Attempt">
+                  <ShotAttemptOverview shot={shot} />
+                </td>
+                <td data-label="Status">
                   <span className="shot-table__status">{shot.status}</span>
                 </td>
-                <td>
+                <td className="shot-table__action-cell" data-label="Actions">
                   <button
                     type="button"
                     className="shot-table__open"
