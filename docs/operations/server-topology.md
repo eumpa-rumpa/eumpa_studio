@@ -39,7 +39,9 @@ reviewed, packaged, or shared from the operator server.
 
 ## Config Example
 
-Use `.env` on the small server to point the backend at the render server:
+Use `scripts/setup-env.sh` to generate `.env` from `.env.1password.tpl`.
+For manual setup, use `.env` on the small server to point the backend at the
+render server:
 
 ```dotenv
 EUMPA_DATA_ROOT=/srv/eumpa-studio
