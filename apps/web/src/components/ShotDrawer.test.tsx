@@ -1143,6 +1143,13 @@ describe("ShotDrawer asset attempts", () => {
       if (url === "/api/workflows/templates/template-1/modes") {
         return Promise.resolve(jsonResponse([mode]));
       }
+      if (url === "/api/shots/shot-1/attempts/attempt-rendered/video-url") {
+        return Promise.resolve(
+          jsonResponse({
+            video_url: "http://localhost:8188/view?filename=output.mp4&subfolder=&type=output",
+          }),
+        );
+      }
       if (
         url === "/api/shots/shot-1/attempts/attempt-rendered/duplicate" &&
         init?.method === "POST"
@@ -1176,6 +1183,11 @@ describe("ShotDrawer asset attempts", () => {
     expect(
       screen.getByRole("button", { name: "Duplicate attempt attempt-rendered" }),
     ).toBeInTheDocument();
+    expect(await screen.findByLabelText("Video preview for attempt attempt-rendered")).toHaveAttribute(
+      "src",
+      "http://localhost:8188/view?filename=output.mp4&subfolder=&type=output",
+    );
+    expect(screen.queryByRole("button", { name: "Play video" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Duplicate attempt attempt-rendered" }));
 

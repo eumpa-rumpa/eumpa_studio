@@ -18,6 +18,29 @@ function formatSeconds(value: number): string {
   return value.toFixed(1).replace(/\.0$/, "");
 }
 
+function ShotVideoPreview({ shot }: { shot: Shot }) {
+  const videoUrl = shot.active_attempt?.video_url;
+  if (!videoUrl) {
+    return (
+      <span className="shot-table__preview-empty">
+        {shot.active_attempt ? "Needs render" : "No render"}
+      </span>
+    );
+  }
+
+  return (
+    <video
+      className="shot-table__video"
+      aria-label={`Video preview for shot ${shot.order + 1}`}
+      src={videoUrl}
+      controls
+      muted
+      preload="metadata"
+      onClick={(event) => event.stopPropagation()}
+    />
+  );
+}
+
 export function ShotTable({ projectId, onShotSelect, onJobsUpdated }: ShotTableProps) {
   const { shots, loading, error, refetch } = useShots(projectId);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -122,7 +145,7 @@ export function ShotTable({ projectId, onShotSelect, onJobsUpdated }: ShotTableP
               <th scope="col">Time</th>
               <th scope="col">Speaker</th>
               <th scope="col">Lyrics</th>
-              <th scope="col">Shot Note</th>
+              <th scope="col">Preview</th>
               <th scope="col">Attempts</th>
               <th scope="col">Status</th>
               <th scope="col">Actions</th>
@@ -148,7 +171,9 @@ export function ShotTable({ projectId, onShotSelect, onJobsUpdated }: ShotTableP
                 </td>
                 <td>{shot.speaker ?? "—"}</td>
                 <td className="shot-table__preview">{previewText(shot.lyrics_text, 60)}</td>
-                <td className="shot-table__preview">{previewText(shot.shot_note, 40)}</td>
+                <td className="shot-table__video-cell">
+                  <ShotVideoPreview shot={shot} />
+                </td>
                 <td>
                   <span className="shot-table__badge">{shot.attempt_count}</span>
                 </td>

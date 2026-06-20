@@ -81,6 +81,8 @@ export interface AttemptSummary {
   image_relative_path: string | null;
   prompt_ko: string | null;
   prompt_en: string | null;
+  output_metadata: string | null;
+  video_url?: string | null;
 }
 
 /** Full attempt detail returned from shot attempt routes */
