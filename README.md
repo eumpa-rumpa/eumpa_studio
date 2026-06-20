@@ -17,13 +17,24 @@ generating prompts, queueing ComfyUI renders, and reviewing rendered clips.
 ```bash
 git clone https://github.com/eumpa-rumpa/eumpa_studio.git
 cd eumpa_studio
-cp .env.example .env
 uv sync --dev
 pnpm --dir apps/web install
 ```
 
-The default `.env.example` stores app data and the SQLite database under
-`data/`, which is intentionally git-ignored.
+Generate the local `.env` file from 1Password:
+
+```bash
+bash scripts/setup-env.sh
+```
+
+If you are not using 1Password on a machine, copy the non-secret defaults:
+
+```bash
+cp .env.example .env
+```
+
+The generated `.env` stores app data and the SQLite database under `data/` by
+default. Both `.env` and `data/` are intentionally git-ignored.
 
 ## Start Locally
 
@@ -61,6 +72,32 @@ The default LTX lip-sync workflow seed is bundled in the repo at
 In the UI, use `Sync skill LTX workflow` to copy that bundled workflow into
 `EUMPA_DATA_ROOT/workflows/skill-defaults/` and register the matching execution
 mode in the database.
+
+## Secrets
+
+Local configuration is generated from `.env.1password.tpl` with
+`scripts/setup-env.sh`. The template stores only 1Password secret references;
+resolved values are written to `.env`, which is ignored by Git and chmodded to
+`0600`.
+
+The expected 1Password item is:
+
+```text
+Vault: Private
+Item: eumpa_studio local
+Fields:
+  EUMPA_DATA_ROOT
+  EUMPA_DATABASE_URL
+  EUMPA_COMFYUI_URL
+  EUMPA_CODEX_CLI_PATH
+  EUMPA_ALIGNMENT_COMMAND
+```
+
+Regenerate `.env` after changing the item:
+
+```bash
+bash scripts/setup-env.sh --force
+```
 
 ## Docs
 

@@ -14,14 +14,54 @@
 ```bash
 git clone https://github.com/eumpa-rumpa/eumpa_studio.git
 cd eumpa_studio
-cp .env.example .env
 uv sync --dev
 pnpm --dir apps/web install
 ```
 
-The default `.env.example` keeps local runtime files under `data/`.
-That directory is ignored by Git and is safe for local DBs, uploads, copied
-workflow templates, cache files, and exports.
+Generate `.env` from 1Password:
+
+```bash
+bash scripts/setup-env.sh
+```
+
+If 1Password is unavailable on a temporary machine, copy the non-secret
+defaults instead:
+
+```bash
+cp .env.example .env
+```
+
+The generated `.env` keeps local runtime files under `data/` by default. That
+directory is ignored by Git and is safe for local DBs, uploads, copied workflow
+templates, cache files, and exports.
+
+## 1Password setup
+
+Install and sign in to the 1Password CLI:
+
+```bash
+brew install --cask 1password-cli
+op signin
+```
+
+The template at `.env.1password.tpl` expects this 1Password item:
+
+```text
+Vault: Private
+Item: eumpa_studio local
+Fields:
+  EUMPA_DATA_ROOT=data
+  EUMPA_DATABASE_URL=sqlite:///data/eumpa.db
+  EUMPA_COMFYUI_URL=http://localhost:8188
+  EUMPA_CODEX_CLI_PATH=codex
+  EUMPA_ALIGNMENT_COMMAND=align
+```
+
+Regenerate `.env` after changing 1Password values:
+
+```bash
+bash scripts/setup-env.sh --force
+```
 
 ## Start everything for local development
 
