@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import json
 from typing import Annotated
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -26,6 +27,8 @@ class AttemptSummary(BaseModel):
     image_relative_path: str | None
     prompt_ko: str | None
     prompt_en: str | None
+    output_metadata: str | None
+    video_url: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -173,9 +176,44 @@ def _attempt_counts(db: Session, shot_ids: list[str]) -> dict[str, int]:
     return {shot_id: count for shot_id, count in rows}
 
 
-def _serialize_shot(shot: Shot, attempt_count: int) -> ShotRead:
+def _build_video_url(output_metadata: str | None, settings: Settings) -> str | None:
+    if not output_metadata:
+        return None
+    try:
+        meta = json.loads(output_metadata)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+    filename = meta.get("filename", "")
+    if not filename:
+        return None
+
+    params = urlencode(
+        {
+            "filename": filename,
+            "subfolder": meta.get("subfolder", ""),
+            "type": meta.get("type", "output"),
+        }
+    )
+    return f"{settings.comfyui_url.rstrip('/')}/view?{params}"
+
+
+def _serialize_attempt_summary(attempt: Attempt, settings: Settings) -> AttemptSummary:
+    return AttemptSummary(
+        id=attempt.id,
+        status=attempt.status,
+        image_storage_backend=attempt.image_storage_backend,
+        image_relative_path=attempt.image_relative_path,
+        prompt_ko=attempt.prompt_ko,
+        prompt_en=attempt.prompt_en,
+        output_metadata=attempt.output_metadata,
+        video_url=_build_video_url(attempt.output_metadata, settings),
+    )
+
+
+def _serialize_shot(shot: Shot, attempt_count: int, settings: Settings) -> ShotRead:
     active_attempt = (
-        AttemptSummary.model_validate(shot.active_attempt)
+        _serialize_attempt_summary(shot.active_attempt, settings)
         if shot.active_attempt is not None
         else None
     )
@@ -262,13 +300,13 @@ def _reject_rendered_input_mutation(attempt: Attempt, update_data: dict[str, obj
         )
 
 
-def _read_shot(db: Session, shot: Shot) -> ShotRead:
+def _read_shot(db: Session, shot: Shot, settings: Settings) -> ShotRead:
     counts = _attempt_counts(db, [shot.id])
-    return _serialize_shot(shot, counts.get(shot.id, 0))
+    return _serialize_shot(shot, counts.get(shot.id, 0), settings)
 
 
 @router.get("/shots", response_model=list[ShotRead])
-def list_shots(project_id: str, db: DbSession) -> list[ShotRead]:
+def list_shots(project_id: str, db: DbSession, settings: SettingsDep) -> list[ShotRead]:
     """List shots for a project ordered by shot order."""
     shots = list(
         db.scalars(
@@ -279,13 +317,13 @@ def list_shots(project_id: str, db: DbSession) -> list[ShotRead]:
         ).all()
     )
     counts = _attempt_counts(db, [shot.id for shot in shots])
-    return [_serialize_shot(shot, counts.get(shot.id, 0)) for shot in shots]
+    return [_serialize_shot(shot, counts.get(shot.id, 0), settings) for shot in shots]
 
 
 @router.get("/shots/{shot_id}", response_model=ShotRead)
-def get_shot(shot_id: str, db: DbSession) -> ShotRead:
+def get_shot(shot_id: str, db: DbSession, settings: SettingsDep) -> ShotRead:
     """Get a single shot with active attempt summary and attempt count."""
-    return _read_shot(db, _get_shot_with_active_attempt(db, shot_id))
+    return _read_shot(db, _get_shot_with_active_attempt(db, shot_id), settings)
 
 
 @router.get("/shots/{shot_id}/attempts", response_model=list[AttemptRead])
@@ -328,7 +366,12 @@ def create_attempt(shot_id: str, body: AttemptCreate, db: DbSession) -> AttemptR
 
 
 @router.patch("/shots/{shot_id}", response_model=ShotRead)
-def update_shot(shot_id: str, body: ShotUpdate, db: DbSession) -> ShotRead:
+def update_shot(
+    shot_id: str,
+    body: ShotUpdate,
+    db: DbSession,
+    settings: SettingsDep,
+) -> ShotRead:
     """Update editable shot fields."""
     shot = _get_shot_with_active_attempt(db, shot_id)
     update_data = body.model_dump(exclude_unset=True)
@@ -344,7 +387,7 @@ def update_shot(shot_id: str, body: ShotUpdate, db: DbSession) -> ShotRead:
 
     db.commit()
     db.refresh(shot)
-    return _read_shot(db, _get_shot_with_active_attempt(db, shot.id))
+    return _read_shot(db, _get_shot_with_active_attempt(db, shot.id), settings)
 
 
 @router.patch("/shots/{shot_id}/attempts/{attempt_id}", response_model=AttemptRead)
@@ -430,7 +473,12 @@ def delete_shot_attempt(shot_id: str, attempt_id: str, db: DbSession) -> None:
 
 
 @router.post("/projects/{project_id}/shots", response_model=ShotRead, status_code=201)
-def create_shot(project_id: str, body: ShotCreate, db: DbSession) -> ShotRead:
+def create_shot(
+    project_id: str,
+    body: ShotCreate,
+    db: DbSession,
+    settings: SettingsDep,
+) -> ShotRead:
     """Create a shot manually for a project."""
     if db.get(Project, project_id) is None:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -456,7 +504,7 @@ def create_shot(project_id: str, body: ShotCreate, db: DbSession) -> ShotRead:
     db.add(shot)
     db.commit()
     db.refresh(shot)
-    return _read_shot(db, _get_shot_with_active_attempt(db, shot.id))
+    return _read_shot(db, _get_shot_with_active_attempt(db, shot.id), settings)
 
 
 @router.post(
@@ -513,15 +561,7 @@ def get_video_url(
     if not attempt.output_metadata:
         raise HTTPException(status_code=404, detail="No output metadata for this attempt")
 
-    try:
-        meta = json.loads(attempt.output_metadata)
-    except (json.JSONDecodeError, TypeError):
+    video_url = _build_video_url(attempt.output_metadata, settings)
+    if video_url is None:
         raise HTTPException(status_code=404, detail="Invalid output metadata")
-
-    filename = meta.get("filename", "")
-    subfolder = meta.get("subfolder", "")
-    file_type = meta.get("type", "output")
-    base_url = settings.comfyui_url.rstrip("/")
-
-    video_url = f"{base_url}/view?filename={filename}&subfolder={subfolder}&type={file_type}"
     return {"video_url": video_url}

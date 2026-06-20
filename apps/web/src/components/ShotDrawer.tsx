@@ -16,7 +16,6 @@ import {
 } from "../api/client";
 import type { Asset, Attempt, ExecutionMode, Shot, WorkflowTemplate } from "../api/types";
 import { AssetPicker } from "./AssetPicker";
-import { VideoPreviewModal } from "./VideoPreviewModal";
 
 interface ShotDrawerProps {
   shot: Shot | null;
@@ -569,6 +568,34 @@ export function ShotDrawer({
     };
   }, [selectedTemplateId]);
 
+  useEffect(() => {
+    if (!currentShot || !expandedAttempt?.output_metadata) {
+      setVideoUrl(null);
+      setVideoError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setVideoUrl(null);
+    setVideoError(null);
+
+    fetchVideoUrl(currentShot.id, expandedAttempt.id)
+      .then((url) => {
+        if (!cancelled) {
+          setVideoUrl(url);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setVideoError(err instanceof Error ? err.message : "Failed to load video");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentShot?.id, expandedAttempt?.id, expandedAttempt?.output_metadata]);
+
   if (!currentShot) {
     return null;
   }
@@ -780,17 +807,6 @@ export function ShotDrawer({
       );
     } finally {
       setSystemPromptDefaultSaving(false);
-    }
-  }
-
-  async function handlePlayVideo() {
-    if (!currentShot || !expandedAttempt) return;
-    setVideoError(null);
-    try {
-      const url = await fetchVideoUrl(currentShot.id, expandedAttempt.id);
-      setVideoUrl(url);
-    } catch (err: unknown) {
-      setVideoError(err instanceof Error ? err.message : "Failed to load video");
     }
   }
 
@@ -1198,20 +1214,27 @@ export function ShotDrawer({
         <div className="shot-drawer__editor-block">
           <div className="shot-drawer__section-header">
             <h4>Review</h4>
-            <button
-              className="shot-drawer__btn shot-drawer__btn--play"
-              type="button"
-              disabled={!attempt.output_metadata}
-              onClick={() => void handlePlayVideo()}
-            >
-              Play video
-            </button>
           </div>
           {videoError ? (
             <p className="shot-drawer__error" role="alert">
               {videoError}
             </p>
           ) : null}
+          {attempt.output_metadata ? (
+            videoUrl ? (
+              <video
+                className="shot-drawer__video"
+                aria-label={`Video preview for attempt ${attempt.id}`}
+                src={videoUrl}
+                controls
+                preload="metadata"
+              />
+            ) : (
+              <p className="shot-drawer__muted">Loading video preview...</p>
+            )
+          ) : (
+            <p className="shot-drawer__muted">No rendered video yet.</p>
+          )}
           <div className="shot-drawer__status-row" role="group" aria-label={`Review status for attempt ${attempt.id}`}>
             {(["Selected", "Redo", "Rejected"] as ReviewStatus[]).map((status) => (
               <button
@@ -1396,10 +1419,6 @@ export function ShotDrawer({
         </DrawerSection>
       </aside>
 
-      <VideoPreviewModal
-        videoUrl={videoUrl}
-        onClose={() => setVideoUrl(null)}
-      />
     </>
   );
 }

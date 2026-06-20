@@ -122,6 +122,42 @@ def test_list_shot_attempts_returns_attempts_for_shot(
     assert first_body["created_at"]
 
 
+def test_list_shots_includes_active_attempt_video_url(api_client: TestClient, db_session):
+    project = Project(name="Shot Preview Project")
+    db_session.add(project)
+    db_session.commit()
+
+    shot = Shot(
+        project_id=project.id,
+        order=0,
+        start_time=0.0,
+        end_time=2.0,
+        duration=2.0,
+        status=ShotStatus.NEEDS_REVIEW.value,
+    )
+    db_session.add(shot)
+    db_session.commit()
+
+    attempt = Attempt(
+        shot_id=shot.id,
+        output_metadata='{"filename": "clip 01.mp4", "subfolder": "renders", "type": "output"}',
+        status=AttemptStatus.NEEDS_REVIEW.value,
+    )
+    db_session.add(attempt)
+    db_session.commit()
+    shot.active_attempt_id = attempt.id
+    db_session.commit()
+
+    response = api_client.get(f"/api/shots?project_id={project.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body[0]["active_attempt"]["output_metadata"] == attempt.output_metadata
+    assert body[0]["active_attempt"]["video_url"] == (
+        "http://localhost:8188/view?filename=clip+01.mp4&subfolder=renders&type=output"
+    )
+
+
 def test_update_attempt_review_note(api_client: TestClient, db_session):
     project = Project(name="Review Note Project")
     db_session.add(project)
