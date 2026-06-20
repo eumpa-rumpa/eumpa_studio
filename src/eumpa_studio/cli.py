@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import threading
 from pathlib import Path
@@ -19,15 +18,17 @@ app_cli = typer.Typer(no_args_is_help=True)
 
 
 def get_settings() -> Settings:
-    """Read local runtime settings from environment variables."""
-    data_root = Path(os.environ.get("EUMPA_DATA_ROOT", "data")).expanduser()
+    """Read local runtime settings from environment variables or .env."""
+    base_settings = Settings()
+    data_root = Path(base_settings.data_root).expanduser()
     return Settings(
         data_root=data_root,
         output_path=data_root / "outputs",
         cache_path=data_root / "cache",
-        comfyui_url=os.environ.get("EUMPA_COMFYUI_URL", "http://localhost:8188"),
-        codex_cli_path=os.environ.get("EUMPA_CODEX_CLI_PATH", "codex"),
-        alignment_command=os.environ.get("EUMPA_ALIGNMENT_COMMAND", "align"),
+        comfyui_url=base_settings.comfyui_url,
+        codex_cli_path=base_settings.codex_cli_path,
+        alignment_command=base_settings.alignment_command,
+        database_url=base_settings.database_url,
     )
 
 
